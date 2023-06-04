@@ -32,7 +32,7 @@ class Access:
 	#   Giving access
 	def giveAccess(self, user_id, rank):
 		if (self.__exists__(user_id)):
-			self.__set_last_error__(999, "Access already given")
+			self.__set_last_error__(58, "Access already given")
 			return False
 		self.white_list.append(
 			{

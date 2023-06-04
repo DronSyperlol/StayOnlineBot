@@ -1,6 +1,7 @@
 .vscode
 
-data/config
+data/config.cfg
 modules/__pycache__
+sessions
 
 test*

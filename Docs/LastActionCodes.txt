@@ -1,15 +1,24 @@
+1 - 9: Добавление нового бота
+	1 - Ожидание номера телефона 
+	2 - Ожидание кода верификации 
+	3 - Ожидание 2FA пароля
+	arg: {
+		delete_messages:  	-	for clear unused messages
+	}
+
+30 - 34: Доступ
+	30 	- Предоставить доступ
+	arg: {
+		rights:				-	user rights "user" or "admin"
+		delete_messages:  	-	for clear unused messages,
+		update_message:		-	id message for update
+	}
+
+
 100 - 109: Переключение страниц
 	100 - Хранение информации о текущей отображенной странице (Общий)
 	arg: {
 		chat_id:	-	update message id,
 		page:		-	current page number,
 		page_func:	-	callback for call current page message,
-	}
-
-	109 - Хранение информации о текущей отображенной странице (Специльно для выбора шаблона исполнения задачи)
-	arg: {
-		chat_id:	-	update message id,
-		page:		-	current page number,
-		page_func:	-	callback for call current page message,
-		task_args	-	Only for selecting pattern for task. (look codes 0-9)
 	}

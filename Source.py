@@ -15,6 +15,7 @@ def main():
 	from configparser import ConfigParser
 	from modules.Bot import Bot
 	from modules.Database import DataBaseAuthKey
+	from modules.UserBots import UserBots
 
 
 
@@ -43,8 +44,22 @@ def main():
 	admin_list = [int(id) for id in admin_list]
 	
 
+	#	#	Init user bots:
+	uBots = UserBots(
+					config["paths"]["SESSIONS_PATH"], 
+					db_key, 
+					config["telegram"]["API_ID"], 
+					config["telegram"]["API_HASH"]
+				)
+
+
 	#	#	Init and start bot
-	bot = Bot(config["telegram"]["BOT_TOKEN"], db_key, admin_list)
+	bot = Bot(
+				config["telegram"]["BOT_TOKEN"], 
+				db_key, 
+				admin_list,
+				uBots
+			)
 
 
 	#	Clear memory:

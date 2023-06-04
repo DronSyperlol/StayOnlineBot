@@ -27,6 +27,33 @@ class DataBase:
 		await self.pool.execute(db_query, [user_id, first_name, username, rank])
 		pass
 
+	
+	async def registerUserOrUpdateRank(self, user_id, first_name, last_name, username, rank):
+		db_query = "INSERT INTO `users` VALUES(?, ?, ?, ?) ON DUPLICATE KEY UPDATE `rank` = VALUES(`rank`)"
+		if (last_name):
+			first_name += f" {last_name}"
+		await self.pool.execute(db_query, [user_id, first_name, username, rank])
+		pass
+
+
+	async def updateUserRank(self, user_id, rank = 0):
+		db_query = "UPDATE `users` SET `rank` = ? WHERE `user_id` = ?"
+		await self.pool.execute(db_query, [rank, user_id])
+		pass
+
+
+	async def getUserInfo(self, user_id):
+		db_query = "SELECT * FROM `users` WHERE `user_id` = ?"
+		result = await self.pool.execute(db_query, [user_id])
+		return {
+			"user_id": result[0][0],
+			"full_name": result[0][1], 
+			"username": result[0][2],
+			"rank": result[0][3]
+		}
+		pass
+
+
 	async def getWhiteList(self):
 		db_query = "SELECT * FROM `users` WHERE `rank` > 0"
 		result = await self.pool.execute(db_query)
@@ -39,6 +66,7 @@ class DataBase:
 				"rank": row[3]
 			})
 		return ret
+	
 	
 
 
