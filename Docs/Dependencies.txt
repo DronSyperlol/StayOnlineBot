@@ -1,0 +1,4 @@
+pip install telebot
+pip install pyrogram
+pip install tgcrypto
+pip install mysql-connector-python

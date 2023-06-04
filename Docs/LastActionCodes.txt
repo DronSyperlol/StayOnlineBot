@@ -1,0 +1,15 @@
+100 - 109: Переключение страниц
+	100 - Хранение информации о текущей отображенной странице (Общий)
+	arg: {
+		chat_id:	-	update message id,
+		page:		-	current page number,
+		page_func:	-	callback for call current page message,
+	}
+
+	109 - Хранение информации о текущей отображенной странице (Специльно для выбора шаблона исполнения задачи)
+	arg: {
+		chat_id:	-	update message id,
+		page:		-	current page number,
+		page_func:	-	callback for call current page message,
+		task_args	-	Only for selecting pattern for task. (look codes 0-9)
+	}

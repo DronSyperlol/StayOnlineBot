@@ -1,0 +1,23 @@
+[telegram]
+BOT_TOKEN = 
+
+
+
+[bot]
+ADMINS = 
+LOG_MODE = 
+
+
+
+[paths]
+SESSIONS_PATH = ./sessions/
+LOG_PATH = ./logs.log
+
+
+
+[database]
+MYSQL_HOST = localhost
+MYSQL_PORT = 3306
+MYSQL_USER = 
+MYSQL_PASSWORD = 
+MYSQL_DATABASE = onliner

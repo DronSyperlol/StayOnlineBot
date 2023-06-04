@@ -1,0 +1,6 @@
+.vscode
+
+data/config
+modules/__pycache__
+
+test*

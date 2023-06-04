@@ -1,0 +1,59 @@
+Database `onliner`
+
+
+Table `users`:
+	+-----------+--------------+------+-----+---------+-------+
+	| Field     | Type         | Null | Key | Default | Extra |
+	+-----------+--------------+------+-----+---------+-------+
+	| user_id   | bigint       | NO   | PRI | NULL    |       |
+	| full_name | varchar(128) | NO   |     | NULL    |       |
+	| username  | varchar(32)  | YES  |     | NULL    |       |
+	| rank      | tinyint      | NO   |     | 0       |       |
+	+-----------+--------------+------+-----+---------+-------+
+
+	rank:
+		9x - root	//	You can recieve it access if write you telegram id in config in section "bot" in row "ADMINS" 
+			99 - full root access to bot (can't be deleted) 
+				Rights:
+					He can add new admins and delete hes.
+			98 - need initialize user for giving root access 
+			97 - need update user info and giving root access again 
+		8x - admins
+			89 - have full access to bot, but it can be deleted.
+				Rights:
+					How root, but admins can be deleted
+			88 - need initialize user for giving admin access 
+			87 - need update user info and giving admin access again 
+
+
+
+
+
+
+
+
+Creation commands:
+
+CREATE DATABASE `onliner`;
+USE `onliner`;
+CREATE TABLE `users` (
+	`user_id` BIGINT NOT NULL PRIMARY KEY,
+	`full_name` VARCHAR(129) NOT NULL,
+	`username` VARCHAR(32),
+	`rank` TINYINT NOT NULL DEFAULT 0,
+	KEY `user_id` (`user_id`)
+);
+CREATE TABLE `bots` (
+	`user_id` BIGINT NOT NULL PRIMARY KEY,
+	`online_time` INT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+	`owner` BIGINT NOT NULL,
+	KEY `owner` (`owner`),
+	FOREIGN KEY (`owner`) REFERENCES `users` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+);
+CREATE TABLE `message_association` (
+	`bot` BIGINT NOT NULL,
+	`sender` BIGINT NOT NULL,
+	`sender_msg` INT NOT NULL,
+	`bot_msg` INT NOT NULL,
+	`status` TINYINT NOT NULL
+);
