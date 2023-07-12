@@ -73,11 +73,15 @@ class Bot:
 	async def __last_action_handler__(self, message, code, arg):
 		match (code):
 
-			case 1:
+			case 1:	
 				if (message.text == "/cancel"):
 					self.bot.send_message(message.chat.id, "Действие отменено")
-					await self.__start_menu__(message.chat.id)
+					await self.__start_menu__(message.chat.id, None, self.access.checkAccessLevel(message.from_user.id, 2))
 					return True
+				arg["delete_messages"].append(message.id)
+
+				result = self.bot.send_message(message.chat.id, "Подождите...")
+				arg["delete_messages"].append(result.id)
 
 				phone = ""
 				if (message.text[0] != '+'):
@@ -85,18 +89,63 @@ class Bot:
 				phone += message.text
 
 				if (await self.uBots.newBot(phone) == "Waiting code"):
-					result = self.bot.send_message(message.chat.id, "Введите мне код верификации чтобы я смог авторизовать аккаунт.\nОн уже был отправлен.")
-					arg["delete_messages"].append(message.id)
+					result = self.bot.send_message(message.chat.id, "Отправьте мне код верификации чтобы я смог авторизовать аккаунт.\nОн уже был отправлен.")
 					arg["delete_messages"].append(result.id)
+					arg["bot_phone_id"] = int(phone.replace('+', ''))
 					self.la.set(message.from_user.id, 2, arg)
 					return True
 				
 				result = self.bot.send_message(message.chat.id, "Что-то пошло не так. Возможно аккаунт не существует.\nПроверьте правильность введённых данных и повторите попытку\n\n/cancel для отмены")
-				arg["delete_messages"].append(message.id)
 				arg["delete_messages"].append(result.id)
+				self.la.set(message.from_user.id, code, arg)
 				return True
 
 			case 2:
+				if (message.text == "/cancel"):
+					self.bot.send_message(message.chat.id, "Действие отменено")
+					await self.__start_menu__(message.chat.id, None, self.access.checkAccessLevel(message.from_user.id, 2))
+					return True
+				arg["delete_messages"].append(message.id)
+
+				match (await self.uBots.setCodeForBot(arg["bot_phone_id"], message.text)):
+					case "Waiting password":
+						result = self.bot.send_message(message.chat.id, "Отправьте мне пароль от аккаунта чтобы я смог авторизовать аккаунт.\nОн уже был отправлен.")
+						arg["delete_messages"].append(result.id)
+						self.la.set(message.from_user.id, 3, arg)
+						return True
+				
+					case "Success":
+						result = self.bot.send_message(message.chat.id, f"Аккаунт +{arg['bot_phone_id']} успешно авторизован!")
+						arg["delete_messages"].append(result.id)
+						await self.uBots.initUBot(arg["bot_phone_id"], message.from_user.id)
+						return True
+
+					case _:
+						result = self.bot.send_message(message.chat.id, f"Не удалось авторизовать аккаунт! Повторите попытку.\n/cancel для отмены")
+						arg["delete_messages"].append(result.id)
+						self.la.set(message.from_user.id, code, arg)
+						return True
+				pass
+
+			case 3:
+				if (message.text == "/cancel"):
+					self.bot.send_message(message.chat.id, "Действие отменено")
+					await self.__start_menu__(message.chat.id, None, self.access.checkAccessLevel(message.from_user.id, 2))
+					return True
+				arg["delete_messages"].append(message.id)
+
+				match (await self.uBots.setPasswordForBot(arg["bot_phone_id"], message.text)):
+					case "Success":
+						result = self.bot.send_message(message.chat.id, f"Аккаунт +{arg['bot_phone_id']} успешно авторизован!")
+						arg["delete_messages"].append(result.id)
+						await self.uBots.initUBot(arg["bot_phone_id"], message.from_user.id)
+						return True
+
+					case _:
+						result = self.bot.send_message(message.chat.id, f"Не удалось авторизовать аккаунт! Повторите попытку.\n/cancel для отмены")
+						arg["delete_messages"].append(result.id)
+						self.la.set(message.from_user.id, code, arg)
+						return True
 				pass
 
 
@@ -119,7 +168,7 @@ class Bot:
 				else:
 					if (message.text == "/cancel"):
 						self.bot.send_message(message.chat.id, "Действие отменено!")
-						await self.__start_menu__(message.chat.id)
+						await self.__start_menu__(message.chat.id, None, self.access.checkAccessLevel(message.from_user.id, 2))
 						return True
 
 					try:

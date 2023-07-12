@@ -6,6 +6,7 @@
 
 from pyrogram import Client 
 from pyrogram import errors
+from pyrogram.types.user_and_chats import User 
 import multiprocessing
 import json
 import asyncio
@@ -16,6 +17,13 @@ from time import time
 #	Consts:
 WAITING_RESPONSE_TIMEOUT = 120
 
+FATAL_ERROR = -1
+
+SIGNIN_NONE = 0
+SIGNIN_SUCCESS = 1
+SIGNIN_WAIT_PHONE = 10
+SIGNIN_WAIT_CODE = 11
+SIGNIN_WAIT_PASSWORD = 12
 
 
 
@@ -26,6 +34,32 @@ WAITING_RESPONSE_TIMEOUT = 120
 #		2.	Появление в сети
 #		3.	Чтение сообщений
 
+
+'''
+	Общение между процессами бота и родителя:
+	
+	Вызов (отправляется родителем):
+		call: {
+			* call 	- Имя функции для вызова
+			* id	- Уникальный идентификатор вызова
+			args	- (Не обязательно) Список аргументы вызова
+		}
+
+	Ответ (Отправляется процессом бота):
+		response: {
+			* call	- Возвращает имя функции 
+			* id		- Возвращает id исполненого вызова
+			* response	- Ответ от функции
+			self	- (Не обязательно) Возвращает поля обеъекта для перезаписи у родителя
+		}
+
+		response: {
+			* call: "notifyed complete task"	- уведомление о завершении задачи, которая ставится вызовом __set_task__.
+			* task_id
+			* result
+		}
+'''
+
 class UserBot(multiprocessing.Process):
 	def __init__(self, session_directory, session_name, proxy = None, app_id = None, app_hash = None):
 		multiprocessing.Process.__init__(self=self, name=session_name)
@@ -33,12 +67,19 @@ class UserBot(multiprocessing.Process):
 		self.app_hash = app_hash 
 		self.folder = session_directory
 		self.status = 0
+		#	0 - no info
+		#	1 - is logined
+		#	10 - waiting phone
+		#	11 - waiting code
+		#	12 - waiting password
 		self.phone = None
 		self.id = None
 		self.first_name = None
 		self.started_at = int(time())
+		#	/\ /\ /\ Cached info about account
 		self.proxy = proxy
-		self.task = multiprocessing.Queue(5)
+		self.task_id = 0
+		self.call = multiprocessing.Queue(5)
 		self.response = multiprocessing.Queue(5)
 		self.executing_tasks = []
 		self.response_storage = {}
@@ -47,7 +88,7 @@ class UserBot(multiprocessing.Process):
 		pass
 
 	def __del__(self):
-		self.task.close()
+		self.call.close()
 		self.response.close()
 		pass
 
@@ -56,100 +97,132 @@ class UserBot(multiprocessing.Process):
 	#
 	#	Available methods:
 	#
-	#async def askCode(self):
-	#	if (self.status >= 1):
-	#		return False
 
-	#	task = {}
-	#	task["task"] = "__askCode__"
-
-	#	self.task.put(json.dumps(task))
-		
-	#	response = await self.wait_response(task["task"])
-	#	print("response: ", response)
-		
-	#	if (response == None):
-	#		return False
-		
-	#	self.is_active = response["self"]["is_active"]
-	#	self.phone = response["self"]["phone"]
-	#	self.id = response["self"]["id"]
-	#	self.first_name = response["self"]["first_name"]
-			
-	#	return response["response"]
-
-
-	#async def setCode(self):
-	#	pass
-
-
-	#async def setPassword(self):
-	#	pass
+	# Authorization methods:
 	async def connect(self):
-		task = {"task": "__connect__"}
-		self.task.put(json.dumps(task))
-		response = await self.wait_response(task["task"])
+		call = {}
+		call["call"] = "__connect__"
+		call["id"] = self.__get_call_id__()
+		self.call.put(json.dumps(call))
+		response = await self.wait_response(call["id"])
+		return response["response"]
+	
+
+	async def askCode(self, phone: str):
+		call = {}
+		call["call"] = "__askCode__"
+		call["id"] = self.__get_call_id__()
+		call["args"] = [phone]
+
+		self.call.put(json.dumps(call))
+		response = await self.wait_response(call["id"])
+		return response["response"]
+
+
+	async def setCode(self, phone, phone_code_hash, code):
+		call = {}
+		call["call"] = "__setCode__"
+		call["id"] = self.__get_call_id__()
+		call["args"] = [phone, phone_code_hash, code]
+
+		self.call.put(json.dumps(call))
+		response = await self.wait_response(call["id"])
+		if ("self" in response):
+			self.is_active = response["self"]["is_active"]
+			self.phone = response["self"]["phone"]
+			self.id = response["self"]["id"]
+			self.first_name = response["self"]["first_name"]
+		return response["response"]
+
+
+	async def setPassword(self, password):
+		call = {}
+		call["call"] = "__setPassword__"
+		call["id"] = self.__get_call_id__()
+		call["args"] = [password]
+
+		self.call.put(json.dumps(call))
+		response = await self.wait_response(call["id"])
+		if ("self" in response):
+			self.is_active = response["self"]["is_active"]
+			self.phone = response["self"]["phone"]
+			self.id = response["self"]["id"]
+			self.first_name = response["self"]["first_name"]
 		return response["response"]
 
 
 	async def doLogin(self, data):
+		if (not data and self.status > 0):
+			return "Argument is empty"
+		
 		match (self.status):
 			case 0:		#	Начало авторизации
-				await self.connect()
-
-				task = {}
-				task["task"] = "__askCode__"
-				task["args"] = [data]
-
-				self.task.put(json.dumps(task))
+				connect_result = await self.connect()
+				if (connect_result):
+					return "Already authorized"
+				elif (connect_result == None):
+					raise Exception("Can't connect to server")
 				
-				response = await self.wait_response(task["task"])
-				print("response: ", response)
-				
-				if (response == None):
-					return "Error sending code"
+				self.status = SIGNIN_WAIT_PHONE
+				if (data):
+					return await self.doLogin(data)
+				return "Connected"
+
+			case 10: #	SIGNIN_WAIT_PHONE
+				phone_code_hash = await self.askCode(data)
 
 				self.__authorization_data__["phone"] = data
-				self.__authorization_data__["code"] = {
-					"phone_code_hash": response["response"],
-				}
+				self.__authorization_data__["phone_code_hash"] = phone_code_hash
 				
-				self.status = 2 #	Ожидание кода
+				self.status = SIGNIN_WAIT_CODE #	Ожидание кода
 				return "Waiting code"
 			
-			case 2:		#	Попытка входа по коду
-				#task = {}
-				#task["task"] = "__askCode__"
+			case 11: #	SIGNIN_WAIT_CODE
+				#	Status codes:
+				#		-1	- fatal error
+				#		0	- bad request. Try again
+				#		1	- bot authorized
+				#		10 	- need password
+				result = await self.setCode(self.__authorization_data__["phone"], self.__authorization_data__["phone_code_hash"], data)
+				match (result["code"]):
+					case 0: #	SIGNIN_NONE
+						return result["comment"]
+					case 1: #	SIGNIN_SUCCESS
+						self.status = SIGNIN_SUCCESS
+						return "Success"
+					case 12: #	SIGNIN_WAIT_PASSWORD
+						self.status = SIGNIN_WAIT_PASSWORD
+						return "Waiting password"
+					case -1: #	FATAL_ERROR
+						raise Exception(result["comment"])
 
-				#self.task.put(json.dumps(task))
-				
-				#response = await self.wait_response(task["task"])
-				#print("response: ", response)
-				
-				#if (response == None):
-				#	return "Error sending code"
-
-				#self.__authorization_data__["phone"] = data
-				#self.__authorization_data__["code"] = {
-				#	"type": response["type"],
-				#	"phone_code_hash": response["phone_code_hash"],
-				#	"next_type": response["next_type"]
-				#}
-				
-				#self.status = 3 #	Ожидание пароля
-				return "Waiting code"
+			case 12: #	SIGNIN_WAIT_PASSWORD
+				#	Status codes:
+				#		-1	- fatal error
+				#		0	- bad request. Try again
+				#		1	- bot authorized
+				result = await self.setPassword(data)
+				match (result["code"]):
+					case 0:	#	FATAL_ERROR
+						return result["comment"]
+					case 1: #	SIGNIN_SUCCESS
+						self.status = SIGNIN_SUCCESS
+						return "Success"
+					case -1: #	FATAL_ERROR
+						raise Exception(result["comment"])
+				pass
 		pass
 
 
 
 	async def logIn(self):
-		task = {}
-		task["task"] = "__logIn__"
+		call = {}
+		call["call"] = "__logIn__"
+		call["id"] = self.__get_call_id__()
 
-		self.task.put(json.dumps(task))
+		self.call.put(json.dumps(call))
 		
-		response = await self.wait_response(task["task"])
-		print("response: ", response)
+		response = await self.wait_response(call["id"])
 		
 		if (response == None):
 			return False
@@ -164,13 +237,13 @@ class UserBot(multiprocessing.Process):
 
 
 	async def check(self):
-		task = {}
-		task["task"] = "__check__"
+		call = {}
+		call["call"] = "__check__"
+		call["id"] = self.__get_call_id__()
 
-		self.task.put(json.dumps(task))
+		self.call.put(json.dumps(call))
 		
-		response = await self.wait_response(task["task"])
-		print("response: ", response)
+		response = await self.wait_response(call["id"])
 		
 		if (response == None):
 			return False
@@ -185,13 +258,13 @@ class UserBot(multiprocessing.Process):
 
 
 	async def protectSelf(self):
-		task = {}
-		task["task"] = "__protect_self__"
+		call = {}
+		call["call"] = "__protect_self__"
+		call["id"] = self.__get_call_id__()
 
-		self.task.put(json.dumps(task))
+		self.call.put(json.dumps(call))
 		
-		response = await self.wait_response(task["task"])
-		print("response: ", response)
+		response = await self.wait_response(call["id"])
 		
 		if (response == None):
 			return False
@@ -201,10 +274,10 @@ class UserBot(multiprocessing.Process):
 
 		
 	def readMessagesAsync(self):
-		task = {}
-		task["task"] = "__read_messages__"
+		call = {}
+		call["call"] = "__read_messages__"
 
-		self.task.put(json.dumps(task))
+		self.call.put(json.dumps(call))
 		pass
 
 
@@ -214,20 +287,20 @@ class UserBot(multiprocessing.Process):
 	#
 	#	Geting response:	
 	#
-	async def wait_response(self, task, attemps = WAITING_RESPONSE_TIMEOUT // 3):
+	async def wait_response(self, id, attemps = WAITING_RESPONSE_TIMEOUT // 3):
 		while attemps > 0:
 			try:
-				if (task in self.response_storage):
-					ret = self.response_storage[task]
-					del self.response_storage[task]
+				if (id in self.response_storage):
+					ret = self.response_storage[id]
+					del self.response_storage[id]
 					return ret
 				response = json.loads(self.response.get(False))
-				if (response["task"] == "notifyed complete task"):
+				if (response["call"] == "notifyed complete task"):
 					self.notify_storage[response["task_id"]] = response["result"]	
-					if (task == ""):
+					if (id == -1):
 						return None
 				else:
-					self.response_storage[response["task"]] = response
+					self.response_storage[response["id"]] = response
 			except:
 				await asyncio.sleep(3)
 				attemps -= 1
@@ -238,7 +311,7 @@ class UserBot(multiprocessing.Process):
 	def wait_notify_complete(self, task_id, task_name, args, async_callback_func):
 		async def __wait_notify_complete__(task_id, async_callback_func):
 			while True:
-				await self.wait_response("", 20)
+				await self.wait_response(-1, 20)
 				if (task_id in self.notify_storage):
 					self.executing_tasks.remove(task_id)
 					is_last = True
@@ -253,18 +326,20 @@ class UserBot(multiprocessing.Process):
 
 	
 
-
+	def __get_call_id__(self):
+		self.task_id += 1
+		return self.task_id
 
 
 
 	#
-	#	Task handler: (Executing in other process)
+	#	Call handler: (Executing in other process)
 	#
 	def run(self):
 		if (self.app_hash and self.app_id):
-			self.app = Client(self.folder + self.name, self.app_id, self.app_hash, proxy=self.proxy)
+			self.app = Client(self.name, self.app_id, self.app_hash, proxy=self.proxy, workdir=self.folder)
 		else:
-			self.app = Client(self.folder + self.name, proxy=self.proxy)
+			self.app = Client(self.name, proxy=self.proxy, workdir=self.folder)
 		print("Process PID: ", multiprocessing.current_process().pid, " Session: ", multiprocessing.current_process().name)
 
 		loop = asyncio.new_event_loop()
@@ -275,84 +350,97 @@ class UserBot(multiprocessing.Process):
 	async def __async_handler__(self):
 		while True:
 			
-			task = None
-			while (not task):
+			call = None
+			while (not call):
 				try:
-					task = self.task.get(False, 5)
+					call = self.call.get(False, 5)
 				except:
 					await asyncio.sleep(5)
 			#
-			#	task - JSON строка
+			#	call - JSON строка
 			#	Аргументы: 
-			#		task - имя метода который нужно вызвать
+			#		call - имя метода который нужно вызвать
 			#		args - список аргументов которые нужно передать методу. Указываются по порядку. Необязательно
 			#	
 			#
 			#	response - JSON строка
 			#	Аргументы: 
-			#		task - имя функции вызванной метода
+			#		call - имя функции вызванной метода
 			#		response - возвращенное значение метода в строке.
 			#		self - объект типа ключ=значение обозначающее переменную класса и её значение ({phone: 88005553535})
 			#	
 
-			print("task: ", task)
-			task = json.loads(task)	#	Parse in JSON
-			
-			if task["task"] == "__connect__":
-				response = {
-					"task": task["task"],
-					"response": False
-				}
-				try:
-					await self.app.connect()
-					response["response"] = True
-				except:
+			print("call: ", call)
+			call = json.loads(call)	#	Parse in JSON
+			response = {
+				"call": call["call"],
+				"id": call["id"]
+			}
+			match(call["call"]):
+
+				case "__connect__":
+					response["response"] = None
+					try:
+						if (await self.app.connect()):
+							response["response"] = True
+						else:
+							response["response"] = False
+					except Exception as e:
+						print("Connect exception: ", e)
+						pass
 					pass
-				self.response.put(json.dumps(response))
 
-			elif task["task"] == "__askCode__":
-				response = {
-					"task": task["task"],
-					"response": await self.__askCode__(task["args"][0])
-				}
-				self.response.put(json.dumps(response))
+				case "__askCode__":
+					response["response"] = await self.__askCode__(call["args"][0])
+					pass
+					
+				case "__setCode__":
+					response["response"] = await self.__setCode__(call["args"][0], call["args"][1], call["args"][2])
+					if (response["response"]["code"] == SIGNIN_SUCCESS):
+						response["self"] = {
+							"is_active": self.is_active,
+							"phone": self.phone,
+							"id": self.id,
+							"first_name": self.first_name
+						}
+						pass
+					pass
+					
+				case "__setPassword__":
+					response["response"] = await self.__setPassword__(call["args"][0])
+					if (response["response"]["code"] == SIGNIN_SUCCESS):
+						response["self"] = {
+							"is_active": self.is_active,
+							"phone": self.phone,
+							"id": self.id,
+							"first_name": self.first_name
+						}
+						pass
+					pass
 				
-			elif task["task"] == "__logIn__":
-				response = {
-					"task": task["task"],
-					"response": await self.__logIn__(),
-					"self": {
+				case "__logIn__":
+					response["response"] = await self.__logIn__()
+					response["self"] = {
 						"is_active": self.is_active,
 						"phone": self.phone,
 						"id": self.id,
 						"first_name": self.first_name
 					}
-				}
-				self.response.put(json.dumps(response))
-				
-			elif task["task"] == "__protect_self__":
-				response = {
-					"task": task["task"],
-					"response": await self.__protect_self__()
-				}
-				self.response.put(json.dumps(response))
-				
-			elif task["task"] == "__check__":
-				response = {
-					"task": task["task"],
-					"response": await self.__check__(),
-					"self": {
+					pass
+
+				case "__check__":
+					response["response"] = await self.__check__()
+					response["response"] = {
 						"is_active": self.is_active,
 						"phone": self.phone,
 						"id": self.id,
 						"first_name": self.first_name
 					}
-				}
-				self.response.put(json.dumps(response))
+					pass
 
-			elif task["task"] == "__read_messages__":
-				self.__read_messages_async__()
-				pass
+			
+			print("response: ", response)
+			self.response.put(json.dumps(response))
 		pass 
 
 
@@ -408,7 +496,7 @@ class UserBot(multiprocessing.Process):
 
 	async def __notify_when_complete__(self, task_id, async_task_func):		#	Отправляет в response то, что вернула переданная callback функция
 		response = {
-			"task": "notifyed complete task",
+			"call": "notifyed complete task",
 			"task_id": task_id,
 			"result": await async_task_func()
 		}
@@ -421,20 +509,72 @@ class UserBot(multiprocessing.Process):
 	#
 	#	Telegram methods:
 	#
+
+	# authorization
 	async def __askCode__(self, phone: str):
-		response = {}
 		try:
 			result = await self.app.send_code(phone)
 		except:
 			return None
 		return result.phone_code_hash
 
+	async def __setCode__(self, phone, phone_code_hash, code):
+		#	Status codes:
+		#		-1	- fatal error
+		#		0	- bad request. Try again
+		#		1	- bot authorized
+		#		12 	- need password
+		response = {
+			"code": SIGNIN_NONE,
+			"comment":""
+		}
+		try:
+			result = await self.app.sign_in(phone, phone_code_hash, code)
+			if (isinstance(result, User)):
+				self.is_active = True
+				self.phone = result.phone_number
+				self.id = result.id
+				self.first_name = result.first_name
+				response["code"] = SIGNIN_SUCCESS
+		except errors.BadRequest as BadRequestDetails:
+			response["code"] = SIGNIN_NONE
+			response["comment"] = f"Bad request\nDetails: {BadRequestDetails}"
+			pass
+		except errors.SessionPasswordNeeded:
+			response["code"] = SIGNIN_WAIT_PASSWORD
+			response["comment"] = f"Need password"
+			pass
+		except Exception as e:
+			response["code"] = FATAL_ERROR
+			response["comment"] = f"Unexpected exception {e}"
+		return response
 
-	async def __setCode__(self, code):
-		
-		pass
+	async def __setPassword__(self, password):
+		#	Status codes:
+		#		-1	- fatal error
+		#		0	- bad request. Try again
+		#		1	- bot authorized
+		response = {
+			"code": SIGNIN_NONE,
+			"comment":""
+		}
+		try:
+			result = await self.app.check_password(password)
+			if (isinstance(result, User)):
+				self.is_active = True
+				self.phone = result.phone_number
+				self.id = result.id
+				self.first_name = result.first_name
+				response["code"] = SIGNIN_SUCCESS
+		except errors.BadRequest as BadRequestDetails:
+			response["code"] = SIGNIN_NONE
+			response["comment"] = f"Bad request\nDetails: {BadRequestDetails}"
+		except Exception as e:
+			response["code"] = FATAL_ERROR
+		return response
+	
 
-
+	# login exists session
 	async def __logIn__(self):
 		try:
 			await self.app.connect()

@@ -1,4 +1,4 @@
-Database `onliner`
+Database `py_onliner`
 
 
 Table `users`:
@@ -32,15 +32,21 @@ Table `users`:
 				Have access only to adding new bots and see owned bots
 
 
-
-
+Table `bots`:
+	+--------------+--------+------+-----+------------------+-------------------+
+	| Field        | Type   | Null | Key | Default          | Extra             |
+	+--------------+--------+------+-----+------------------+-------------------+
+	| bot_phone_id | bigint | NO   | PRI | NULL             |                   |
+	| owner        | bigint | NO   | MUL | NULL             |                   |
+	| next_login   | int    | NO   |     | unix_timestamp() | DEFAULT_GENERATED |
+	+--------------+--------+------+-----+------------------+-------------------+
 
 
 
 Creation commands:
 
-CREATE DATABASE `onliner`;
-USE `onliner`;
+CREATE DATABASE `py_onliner`;
+USE `py_onliner`;
 CREATE TABLE `users` (
 	`user_id` BIGINT NOT NULL PRIMARY KEY,
 	`full_name` VARCHAR(129) NOT NULL,
@@ -49,9 +55,9 @@ CREATE TABLE `users` (
 	KEY `user_id` (`user_id`)
 );
 CREATE TABLE `bots` (
-	`user_id` BIGINT NOT NULL PRIMARY KEY,
-	`online_time` INT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+	`bot_phone_id` BIGINT NOT NULL PRIMARY KEY,
 	`owner` BIGINT NOT NULL,
+	`next_login` INT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
 	KEY `owner` (`owner`),
 	FOREIGN KEY (`owner`) REFERENCES `users` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 );

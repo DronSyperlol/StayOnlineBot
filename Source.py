@@ -16,7 +16,15 @@ def main():
 	from modules.Bot import Bot
 	from modules.Database import DataBaseAuthKey
 	from modules.UserBots import UserBots
+	from os.path import exists
+	from os import mkdir
 
+
+	#	Def functinons:
+	def create_dirs(config):
+		if (not exists(config["paths"]["SESSIONS_PATH"])):
+			mkdir(config["paths"]["SESSIONS_PATH"])
+		pass
 
 
 	#	Consts:
@@ -28,17 +36,21 @@ def main():
 	#	#	Read config
 	config = ConfigParser()
 	config.read(CONFIG_FILE)
+
+
+	#	Creating dirs:
+	create_dirs(config)
 	
 
 	#	#	Init DB Key:
 	db_key = DataBaseAuthKey(
-		config["database"]["MYSQL_HOST"],
-		config["database"]["MYSQL_PORT"],
-		config["database"]["MYSQL_USER"],
-		config["database"]["MYSQL_PASSWORD"],
-		config["database"]["MYSQL_DATABASE"]
-	)
-	
+							config["database"]["MYSQL_HOST"],
+							config["database"]["MYSQL_PORT"],
+							config["database"]["MYSQL_USER"],
+							config["database"]["MYSQL_PASSWORD"],
+							config["database"]["MYSQL_DATABASE"]
+						)
+
 
 	admin_list = config["bot"]["ADMINS"].split(', ')
 	admin_list = [int(id) for id in admin_list]
@@ -49,7 +61,9 @@ def main():
 					config["paths"]["SESSIONS_PATH"], 
 					db_key, 
 					config["telegram"]["API_ID"], 
-					config["telegram"]["API_HASH"]
+					config["telegram"]["API_HASH"],
+					int(config["bot"]["NEXT_LOGIN_LOWER_THRESHOLD"]),
+					int(config["bot"]["NEXT_LOGIN_UPPER_THRESHOLD"])
 				)
 
 

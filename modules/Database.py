@@ -1,6 +1,8 @@
 from modules.MySql import Pool
 #import asyncio
 
+
+
 class DataBaseAuthKey:
 	def __init__(self, host, port, user, password, database):
 		self.host=host
@@ -70,4 +72,27 @@ class DataBase:
 	
 
 
+	#	bots:
+	async def newBot(self, bot_phone_id, owner, next_login):
+		db_query = "INSERT INTO bots VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `bot_phone_id` = VALUES(`bot_phone_id`), `owner` = VALUES(`owner`)"
+		await self.pool.execute(db_query, [bot_phone_id, owner, next_login])
+		pass
+
+	async def updateNextLogin(self, bot_phone_id, next_login = None):
+		db_query = "UPDATE `bots` SET `next_login` = ? WHERE `bot_phone_id` = ?"
+		await self.pool.execute(db_query, [next_login, bot_phone_id])
+		pass
+
+	async def getNearestNextLoginBots(self):
+		db_query = "SELECT * FROM `bots` WHERE `next_login` < UNIX_TIMESTAMP()"
+		result = await self.pool.execute(db_query)
+		ret = []
+		for row in result:
+			ret.append({
+				"bot_phone_id": row[0],
+				"owner": row[1], 
+				"next_login": row[2]
+			})
+			pass
+		pass
 	pass
