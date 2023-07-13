@@ -94,5 +94,19 @@ class DataBase:
 				"next_login": row[2]
 			})
 			pass
+		return ret
+		pass
+
+
+
+	# message_association:
+	async def newAssociation(self, bot_phone_id, sender_id, sender_msg_id, bot_msg_id, status):
+		db_query = "INSERT INTO `message_association` VALUES(?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `sender_id` = VALUES(`sender_id`)"
+		await self.pool.execute(db_query, [bot_phone_id, sender_id, sender_msg_id, bot_msg_id, status])
+		pass
+
+	async def updateAssociationStatus(self, bot_phone_id, sender_id, new_status):
+		db_query = "UPDATE `message_association` SET `status` = ? WHERE `bot_phone_id` = ? AND `sender_id` = ?"
+		await self.pool.execute(db_query, [new_status, bot_phone_id, sender_id])
 		pass
 	pass

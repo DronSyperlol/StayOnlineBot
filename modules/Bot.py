@@ -371,6 +371,34 @@ class Bot:
 
 
 
+	#
+	#	Send UBot message notify
+	#
+	async def notifyAboutMessages(self, sender_object, bot_phone_id, owner):
+		self.bot.send_message(
+			owner,
+			"<b>Получены новые сообщения от пользователя:</b>\n" +
+			f"<a href=\"tg://user?id={sender_object['from']['id']}\">{sender_object['from']['first_name']}</a>\n" +
+			f'Username: {"@" + sender_object["from"]["username"] if sender_object["from"]["username"] else "<i>none</i>"}\n\n' +
+			"<i>Для ответа на сообщение, ответьте (сдвиньте влево) на интересующее сообщение:</i>\n\n" +
+			"<b>Сообщения предоставлены ниже:</b>",
+			"html",
+			disable_web_page_preview=True
+		)
+		for msg_id, msg_text in sender_object["messages"].items():
+			msg_id = int(msg_id)
+			result = self.bot.send_message(
+				owner, 
+				f"<a href=\"tg://user?id={sender_object['from']['id']}\">{sender_object['from']['first_name']}:</a>\n" +
+				msg_text,
+				"html",
+				disable_web_page_preview=True				
+			)
+			await self.db.updateAssociationStatus(bot_phone_id, sender_object['from']['id'], 2)
+			await self.db.newAssociation(bot_phone_id, sender_object['from']['id'], msg_id, result.id, 1)
+			pass
+		pass
+
 
 	#
 	#	Access screen;

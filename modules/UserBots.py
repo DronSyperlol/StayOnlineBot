@@ -3,6 +3,11 @@ from modules.Database import DataBase
 from random import randint
 from time import time
 import os
+import asyncio
+
+
+
+BOT_LIFETIME = 300
 
 
 
@@ -16,6 +21,12 @@ class UserBots:
 		self.lower_threshold = lower_threshold
 		self.upper_threshold = upper_threshold
 		self.sessions = self.getLocalSessions()
+		self.notifyAboutMessages = None 
+
+
+	def setCallbacks(self, notifyAboutMessages):
+		self.notifyAboutMessages = notifyAboutMessages
+		pass
 
 
 	def getLocalSessions(self) -> list:
@@ -65,28 +76,99 @@ class UserBots:
 
 		bot = self.getBot(bot_phone_id)
 		bot.kill()
-		
-		if (os.path.exists(self.session_directory + tmp_name)):
-			if (os.path.exists(self.session_directory + final_name)):
-				os.remove(self.session_directory + final_name)
-			os.rename(self.session_directory + tmp_name, self.session_directory + final_name)
-			os.remove(self.session_directory + tmp_name + "-journal")
-			pass
+		for _ in range(3):
+			try:
+				if (os.path.exists(self.session_directory + tmp_name)):
+					if (os.path.exists(self.session_directory + final_name)):
+						os.remove(self.session_directory + final_name)
+					os.rename(self.session_directory + tmp_name, self.session_directory + final_name)
+					os.remove(self.session_directory + tmp_name + "-journal")
+					pass
+			except:
+				await asyncio.sleep(1)
+				pass
 		await self.db.newBot(bot_phone_id, owner, self.generateNexLoginTime())
 		pass
 
 
 
 	# starting bots:
-	async def startUBot(self):
-		pass
+	async def startUBot(self, bot_phone_id, owner):
+		bot = UserBot(self.session_directory, str(bot_phone_id), None, self.api_id, self.api_hash, owner)
+		self.loaded_sessions[bot_phone_id] = bot
+		bot.start()
+		if (await bot.logIn()):
+			return bot
+		return None
 		
 
 	#	Do online:
 	async def checkNextLogins(self):
+		bots_for_start = await self.db.getNearestNextLoginBots()
+		if (not bots_for_start):
+			return
+		start_tasks = []
+		update_online_tasks = []
+		get_messages_tasks = []
+		for bot_info in bots_for_start:
+			start_tasks.append(
+				asyncio.create_task(
+					self.startUBot(bot_info["bot_phone_id"], bot_info["owner"])
+				)
+			)
+			pass
+		for task in start_tasks:
+			bot = await task
+			if (bot):
+				update_online_tasks.append({
+					"bot": bot,
+					"task": asyncio.create_task(
+						bot.updateOnlineStatus()
+					)
+				})
+				get_messages_tasks.append({
+					"bot": bot,
+					"task": asyncio.create_task(
+						bot.getUnreadMessagesInfo()
+					)
+				})
+				pass
+			pass
+		del start_tasks	#	БАЙТОЁБЛЮ АХАХАХХАХА
 
+		for task in update_online_tasks:
+			await task["task"]
+			await self.db.updateNextLogin(int(task["bot"].phone), self.generateNexLoginTime())
+			pass
+		del update_online_tasks	#	БАЙТОЁБЛЮ АХАХАХХАХА
+
+		for task in get_messages_tasks:
+			result = await task["task"]
+			for sender_object in result:
+				await self.notifyAboutMessages(sender_object, int(task["bot"].phone), task["bot"].owner)
+			print(result)
+			pass
+
+		for task in get_messages_tasks:
+			self.killUBot(int(task["bot"].phone))
+			pass
 		pass
 
 	def generateNexLoginTime(self):
 		return int(time() + randint(self.lower_threshold, self.upper_threshold))
+
+
+	#	kill bots:
+	def killUBot(self, bot_phone_id):
+		self.loaded_sessions[bot_phone_id].kill()
+		del self.loaded_sessions[bot_phone_id]
+		pass
+	
+	async def killOldUBots(self):
+		for key, bot in enumerate(self.loaded_sessions):
+			if (bot.started_at < (time() - BOT_LIFETIME)):
+				self.killUBot(key)
+				pass
+			pass
+		pass
 	pass

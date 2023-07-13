@@ -26,6 +26,20 @@ def main():
 			mkdir(config["paths"]["SESSIONS_PATH"])
 		pass
 
+	async def status_updater(uBots: UserBots, timeout):
+		while True:
+			await uBots.checkNextLogins()
+			await asyncio.sleep(timeout)
+			pass
+		pass
+
+	async def bot_life_checker(uBots: UserBots, timeout):
+		while True:
+			await uBots.killOldUBots()
+			await asyncio.sleep(timeout)
+			pass
+		pass
+
 
 	#	Consts:
 	CONFIG_FILE = "./data/config.cfg"
@@ -75,18 +89,21 @@ def main():
 				uBots
 			)
 
+	uBots.setCallbacks(bot.notifyAboutMessages)
 
 	#	Clear memory:
 	del db_key
-	del config
 
 
-	async def async_main():
-		while (True):
-			await asyncio.sleep(5)
+	async def async_main(config):
+		updater_task = asyncio.create_task(status_updater(uBots, int(config["bot"]["UPDATER_ONLINE_TIMEOUT"])))
+		bot_killer_task = asyncio.create_task(bot_life_checker(uBots, int(config["bot"]["KILL_OLD_BOTS_TIMEOUT"])))
+
+		await updater_task
+		await bot_killer_task
 		pass
 
-	asyncio.run(async_main())
+	asyncio.run(async_main(config))
 	pass
 
 

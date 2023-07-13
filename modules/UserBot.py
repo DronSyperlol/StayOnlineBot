@@ -7,6 +7,7 @@
 from pyrogram import Client 
 from pyrogram import errors
 from pyrogram.types.user_and_chats import User 
+from pyrogram.raw.functions.account.update_status import UpdateStatus 
 import multiprocessing
 import json
 import asyncio
@@ -61,7 +62,7 @@ SIGNIN_WAIT_PASSWORD = 12
 '''
 
 class UserBot(multiprocessing.Process):
-	def __init__(self, session_directory, session_name, proxy = None, app_id = None, app_hash = None):
+	def __init__(self, session_directory, session_name, proxy = None, app_id = None, app_hash = None, owner = None):
 		multiprocessing.Process.__init__(self=self, name=session_name)
 		self.app_id = app_id
 		self.app_hash = app_hash 
@@ -75,6 +76,7 @@ class UserBot(multiprocessing.Process):
 		self.phone = None
 		self.id = None
 		self.first_name = None
+		self.owner = owner
 		self.started_at = int(time())
 		#	/\ /\ /\ Cached info about account
 		self.proxy = proxy
@@ -214,7 +216,6 @@ class UserBot(multiprocessing.Process):
 		pass
 
 
-
 	async def logIn(self):
 		call = {}
 		call["call"] = "__logIn__"
@@ -235,7 +236,29 @@ class UserBot(multiprocessing.Process):
 		return response["response"]
 
 
+	# work:
+	async def updateOnlineStatus(self, is_online = True):
+		call = {}
+		call["call"] = "__update_online_status__"
+		call["id"] = self.__get_call_id__()
+		call["args"] = [is_online]
+		self.call.put(json.dumps(call))
+		response = await self.wait_response(call["id"])
+		return response["response"]
 
+
+	async def getUnreadMessagesInfo(self):
+		call = {}
+		call["call"] = "__get_unread_messages_info__"
+		call["id"] = self.__get_call_id__()
+		self.call.put(json.dumps(call))
+		response = await self.wait_response(call["id"])
+		return response["response"]
+
+		pass
+
+
+	# other methods:
 	async def check(self):
 		call = {}
 		call["call"] = "__check__"
@@ -254,33 +277,6 @@ class UserBot(multiprocessing.Process):
 		self.first_name = response["self"]["first_name"]
 			
 		return response["response"]
-
-
-
-	async def protectSelf(self):
-		call = {}
-		call["call"] = "__protect_self__"
-		call["id"] = self.__get_call_id__()
-
-		self.call.put(json.dumps(call))
-		
-		response = await self.wait_response(call["id"])
-		
-		if (response == None):
-			return False
-			
-		return response["response"]
-
-
-		
-	def readMessagesAsync(self):
-		call = {}
-		call["call"] = "__read_messages__"
-
-		self.call.put(json.dumps(call))
-		pass
-
-
 
 
 
@@ -308,23 +304,6 @@ class UserBot(multiprocessing.Process):
 		return None
 
 
-	def wait_notify_complete(self, task_id, task_name, args, async_callback_func):
-		async def __wait_notify_complete__(task_id, async_callback_func):
-			while True:
-				await self.wait_response(-1, 20)
-				if (task_id in self.notify_storage):
-					self.executing_tasks.remove(task_id)
-					is_last = True
-					if (self.executing_tasks):
-						is_last = False
-					await async_callback_func(task_id, task_name, self.id, args, self.notify_storage[task_id], is_last)
-					del self.notify_storage[task_id]
-					return
-				await asyncio.sleep(60)
-		asyncio.create_task(__wait_notify_complete__(task_id, async_callback_func))
-
-
-	
 
 	def __get_call_id__(self):
 		self.task_id += 1
@@ -438,72 +417,17 @@ class UserBot(multiprocessing.Process):
 					}
 					pass
 
+				case "__update_online_status__":
+					response["response"] = await self.__update_online_status__(call["args"][0])
+					pass
+
+				case "__get_unread_messages_info__":
+					response["response"] = await self.__get_unread_messages_info__()
+					pass
 			
 			print("response: ", response)
 			self.response.put(json.dumps(response))
 		pass 
-
-
-
-	#
-	#	Tasks:
-	#
-	async def __set_task__(self, task_id, task, args, execute_time):
-		if (task_id in self.executing_tasks):
-			return False
-		args = json.loads(args)
-		self.executing_tasks.append(task_id)
-		match(task):
-			case "JOIN":
-				sleep_time = execute_time - int(time())
-				if (sleep_time < 0 and sleep_time >= -120):
-					sleep_time = 0
-				elif (sleep_time < -120):
-					return False
-				self.__delay_task__(sleep_time, lambda : self.__notify_when_complete__(task_id, lambda : self.__join__(args["target"])))
-			
-			case "LEAVE":
-				sleep_time = execute_time - int(time())
-				if (sleep_time < 0 and sleep_time >= -120):
-					sleep_time = 0
-				elif (sleep_time < -120):
-					return False
-				
-				self.__delay_task__(sleep_time, lambda : self.__notify_when_complete__(task_id, lambda : self.__leave__(args["target"])))
-
-			case "REPRT":
-				sleep_time = execute_time - int(time())
-				if (sleep_time < 0 and sleep_time >= -120):
-					sleep_time = 0
-				elif (sleep_time < -120):
-					return False
-				
-				if ("message_ids" in args):
-					self.__delay_task__(sleep_time, lambda : self.__notify_when_complete__(task_id, lambda : self.__report_post__(args["target"], args["message_ids"], args["reason"])))
-				else:
-					self.__delay_task__(sleep_time, lambda : self.__notify_when_complete__(task_id, lambda : self.__report_peer__(args["target"], args["reason"])))
-
-		return True
-
-
-	def __delay_task__(self, timeout_sec, async_callback_func):
-		async def __set_interval__(timeout_sec, async_callback_func):
-			await asyncio.sleep(timeout_sec)
-			await async_callback_func()
-		asyncio.create_task(__set_interval__(timeout_sec, async_callback_func))
-		pass
-	
-
-	async def __notify_when_complete__(self, task_id, async_task_func):		#	Отправляет в response то, что вернула переданная callback функция
-		response = {
-			"call": "notifyed complete task",
-			"task_id": task_id,
-			"result": await async_task_func()
-		}
-		self.response.put(json.dumps(response))
-		self.executing_tasks.remove(task_id)
-		pass
-
 
 
 	#
@@ -589,6 +513,7 @@ class UserBot(multiprocessing.Process):
 		return True
 
 
+
 	async def __check__(self):
 		try:
 			user_info = await self.app.get_me()
@@ -605,162 +530,55 @@ class UserBot(multiprocessing.Process):
 	
 
 	#	Low level API:
-	async def __protect_self__(self):
-		ret_code = 0
+	async def __update_online_status__(self, is_online = True):
 		try:
-			from hashlib import md5
-			password = (md5(str(self.id).encode())).hexdigest()
-			await self.app.enable_cloud_password(password)
-			ret_code += 1
-		except:		
-			ret_code += 10
-		try:
-			from pyrogram.raw.functions.auth.reset_authorizations import ResetAuthorizations
-			await self.app.invoke(ResetAuthorizations())
-			ret_code += 2
+			func = UpdateStatus(offline=(not is_online))
+			return await self.app.invoke(func)
 		except:
-			ret_code += 20
-			from pyrogram.raw.functions.account.get_authorizations import GetAuthorizations
-			result = await self.app.invoke(GetAuthorizations())
-			ret_code *= 1000
-			ret_code += len(result.authorizations)
-			
-
-		#	ret_code == 3	//	Sucess
-		#	ret_code == 30	//	All bad
-		#	ret_code == 21	//	ResetAuthorizations failure
-		#	ret_code == 12 	//	Enable password failure
-		
-		return ret_code
-
-
-	async def __report_post__(self, chat_id, message_ids = [], reason = "OTHER"):
-		try:
-			from pyrogram.raw.functions.messages.report import Report
-			reason = self.__resolve_reason__(reason)
-			peer = await self.app.resolve_peer(chat_id)
-			report = Report(peer=peer, id=message_ids, reason=reason, message="")
-			result = await self.app.invoke(report)
-		except:
-			result = False
-		return result
-	
-
-	async def __report_peer__(self, chat_id, reason = "OTHER"):
-		try:
-			from pyrogram.raw.functions.account.report_peer import ReportPeer
-			reason = self.__resolve_reason__(reason)
-			peer = await self.app.resolve_peer(chat_id)
-			report = ReportPeer(peer=peer, reason=reason, message="")
-			result = await self.app.invoke(report)
-		except:
-			result = False
-		return result
-
-	
-	def __resolve_reason__(self, reason: str):
-		match(reason):
-			case "PERSONALDETAILS":
-				from pyrogram.raw.types.input_report_reason_personal_details import InputReportReasonPersonalDetails as reason_constructor
-				return reason_constructor()
-				
-			case "ILLEGALDRUGS":
-				from pyrogram.raw.types.input_report_reason_illegal_drugs import InputReportReasonIllegalDrugs as reason_constructor
-				return reason_constructor()
-				
-			case "VIOLENCE":
-				from pyrogram.raw.types.input_report_reason_violence import InputReportReasonViolence as reason_constructor
-				return reason_constructor()
-				
-			case "CHILDABUSE":
-				from pyrogram.raw.types.input_report_reason_child_abuse import InputReportReasonChildAbuse as reason_constructor
-				return reason_constructor()
-				
-			case "PORNOGRAPHY":
-				from pyrogram.raw.types.input_report_reason_pornography import InputReportReasonPornography as reason_constructor
-				return reason_constructor()
-				
-			case "FAKE":
-				from pyrogram.raw.types.input_report_reason_fake import InputReportReasonFake as reason_constructor
-				return reason_constructor()
-				
-			case "COPYRIGHT":
-				from pyrogram.raw.types.input_report_reason_copyright import InputReportReasonCopyright as reason_constructor
-				return reason_constructor()
-			
-			case "SPAM":
-				from pyrogram.raw.types.input_report_reason_spam import InputReportReasonSpam as reason_constructor
-				return reason_constructor()
-			
-			case _:
-				from pyrogram.raw.types.input_report_reason_other import InputReportReasonOther as reason_constructor
-				return reason_constructor()
+			return None
 		pass
 
 
-
-	async def __join__(self, target):	#	look Database description.txt
-		response = None
-		try:
-			response = await self.app.join_chat(target)
-		except errors.exceptions.bad_request_400.InviteRequestSent:
-			return 1		#	Invite request sent
-		except:
-			pass
-
-		if response and response.id:
-			return 10		#	In channel
-		else:
-			return -1		#	Some error
-
-
-	async def __leave__(self, target):
-		try:
-			await self.app.leave_chat(target, True)
-		except:
-			return -1
-		return 1
-
-
-
-	async def __get_chat__(self, link, get_full_info = False):
-		try:
-			result = await self.app.get_chat(link)
-			id = result.id
-			if (get_full_info):
-				return [id, result.title, result.type.name]
-		except:
-			return 0
-		return id
-	
-
-	async def __get_available_chats__(self):
-		chat_ids = []
+	async def __get_unread_messages_info__(self):
+		#	return list of sender objects
+		#	sender object: {
+		#		from: {
+		#			name 		- sender first name
+		#			username 	- sender username
+		#			id 			- sender id
+		# 		},
+		#		messages: {			- dict of unread messages from this sender
+		#			message_id: message_text
+		# 		}
+		# 	}
+		ret = []
 		try:
 			result = self.app.get_dialogs()
 		except:
-			return chat_ids
-		async for dialog in result:
-			if (dialog.chat.type.value == "channel" or (dialog.chat.type.value == "group" and dialog.chat.permissions)):
-				chat_ids.append(dialog.chat.id)
-			pass
-		return chat_ids
-	
-
-
-	def __read_messages_async__(self):
-		async def __read_messages__(self):
-			from random import randint
-			try:
-				result = self.app.get_dialogs()
-			except:
-				return False
-
+			return None
+		try:
 			async for dialog in result:
-				if (dialog.unread_messages_count <= 0):
+				if (dialog.unread_messages_count <= 0 or dialog.chat.type.name != "PRIVATE"):
 					continue
-				await self.app.read_chat_history(dialog.chat.id)
-				await asyncio.sleep(randint(2, 20))
-			return True
-		asyncio.create_task(__read_messages__(self))
-	pass
+				message_object = {
+					"from": {},
+					"messages": {}
+				}
+				message_object["from"]["first_name"] = dialog.chat.first_name
+				message_object["from"]["id"] = dialog.chat.id
+				message_object["from"]["username"] = dialog.chat.username
+				try:
+					chat_history = self.app.get_chat_history(dialog.chat.id, dialog.unread_messages_count)
+					async for message in chat_history:
+						message_object["messages"][int(message.id)] = message.text
+						pass
+					pass
+				except:
+					pass
+				pass
+				ret.append(message_object)
+			pass
+		except:
+			pass
+		return ret
+	

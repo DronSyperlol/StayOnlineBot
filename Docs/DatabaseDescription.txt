@@ -43,6 +43,27 @@ Table `bots`:
 
 
 
+Table `message_association`:
+	+---------------+---------+------+-----+---------+-------+
+	| Field         | Type    | Null | Key | Default | Extra |
+	+---------------+---------+------+-----+---------+-------+
+	| bot_phone_id  | bigint  | NO   | MUL | NULL    |       |
+	| sender_id     | bigint  | NO   |     | NULL    |       |
+	| sender_msg_id | int     | NO   |     | NULL    |       |
+	| bot_msg_id    | int     | NO   |     | NULL    |       |
+	| status        | tinyint | NO   |     | NULL    |       |
+	+---------------+---------+------+-----+---------+-------+
+
+	status:
+		1	-	На сообщение нужно отвечать новым сообщением.
+		2	-	На сообщение нужно ответить ответом на сообщение (переслать)
+
+
+
+
+
+
+
 Creation commands:
 
 CREATE DATABASE `py_onliner`;
@@ -62,9 +83,10 @@ CREATE TABLE `bots` (
 	FOREIGN KEY (`owner`) REFERENCES `users` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 );
 CREATE TABLE `message_association` (
-	`bot` BIGINT NOT NULL,
-	`sender` BIGINT NOT NULL,
-	`sender_msg` INT NOT NULL,
-	`bot_msg` INT NOT NULL,
-	`status` TINYINT NOT NULL
+	`bot_phone_id` BIGINT NOT NULL,
+	`sender_id` BIGINT NOT NULL,
+	`sender_msg_id` INT NOT NULL,
+	`bot_msg_id` INT NOT NULL,
+	`status` TINYINT NOT NULL,
+	FOREIGN KEY (`bot_phone_id`) REFERENCES `bots` (`bot_phone_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 );
