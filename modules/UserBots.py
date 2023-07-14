@@ -41,7 +41,7 @@ class UserBots:
 		return sessions
 
 
-	def getBot(self, bot_phone_id):
+	def getBot(self, bot_phone_id) -> UserBot:
 		if (bot_phone_id in self.loaded_sessions):
 			return self.loaded_sessions[bot_phone_id]
 		return None
@@ -95,15 +95,25 @@ class UserBots:
 	# starting bots:
 	async def startUBot(self, bot_phone_id, owner):
 		bot = UserBot(self.session_directory, str(bot_phone_id), None, self.api_id, self.api_hash, owner)
+		if (bot_phone_id in self.loaded_sessions):
+			raise Exception("Bot already started")
 		self.loaded_sessions[bot_phone_id] = bot
 		bot.start()
 		if (await bot.logIn()):
 			return bot
 		return None
+	
+	##################
+	#	Возвращает запущеного бота, если тот был запущен
+	async def getOrStartUBot(self, bot_phone_id):
+		if (bot_phone_id in self.loaded_sessions and self.loaded_sessions[bot_phone_id].is_active):
+			return self.loaded_sessions[bot_phone_id]
+		return await self.startUBot(bot_phone_id, (await self.db.getBotOwner(bot_phone_id)))
 		
 
-	#	Do online:
-	async def checkNextLogins(self):
+	#	Work methods:
+	# Do online:
+	async def checkNextLogins(self):		# TODO... Надо сократить это говно!!!
 		bots_for_start = await self.db.getNearestNextLoginBots()
 		if (not bots_for_start):
 			return
@@ -158,6 +168,31 @@ class UserBots:
 		return int(time() + randint(self.lower_threshold, self.upper_threshold))
 
 
+	def updateUnreadMessagesAsync(self, bot_phone_id):
+		async def __updateUnreadMessagesAsync__(bot: UserBot):
+			bot.deadAfter(80)
+			await asyncio.sleep(60)
+			result = await bot.getUnreadMessagesInfo()
+			for sender_object in result:
+				await self.notifyAboutMessages(sender_object, int(bot.phone), bot.owner)
+			pass
+		asyncio.create_task(	#	Call async method
+			__updateUnreadMessagesAsync__(
+				self.getBot(bot_phone_id)
+			)
+		)
+		pass
+
+
+	# Respones for sender:
+	async def sendResponse(self, bot_phone_id, sender_id, sender_msg_id, text, is_reply = False):
+		if (not is_reply):
+			sender_msg_id = None	# Если это не ответ, то id сообщения нахуй не нужен
+		bot = await self.getOrStartUBot(bot_phone_id)
+		await bot.sendMessage(sender_id, text, sender_msg_id)
+		pass
+
+
 	#	kill bots:
 	def killUBot(self, bot_phone_id):
 		self.loaded_sessions[bot_phone_id].kill()
@@ -166,7 +201,7 @@ class UserBots:
 	
 	async def killOldUBots(self):
 		for key, bot in enumerate(self.loaded_sessions):
-			if (bot.started_at < (time() - BOT_LIFETIME)):
+			if (bot.dead_time < time()):
 				self.killUBot(key)
 				pass
 			pass

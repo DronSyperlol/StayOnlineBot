@@ -97,6 +97,11 @@ class DataBase:
 		return ret
 		pass
 
+	async def getBotOwner(self, bot_phone_id):
+		db_query = "SELECT `owner` FROM `bots` WHERE `bot_phone_id` = ?"
+		result = await self.pool.execute(db_query, [bot_phone_id])
+		return result[0][0]
+		pass
 
 
 	# message_association:
@@ -109,4 +114,18 @@ class DataBase:
 		db_query = "UPDATE `message_association` SET `status` = ? WHERE `bot_phone_id` = ? AND `sender_id` = ?"
 		await self.pool.execute(db_query, [new_status, bot_phone_id, sender_id])
 		pass
+
+	async def getAssociationInfo(self, bot_msg_id, bot_owner):
+		db_query = "SELECT ma.bot_phone_id, ma.sender_id, ma.sender_msg_id, ma.status FROM `message_association` AS ma INNER JOIN `bots` AS b ON ma.bot_phone_id = b.bot_phone_id WHERE b.owner = ? AND ma.bot_msg_id = ?"
+		result = await self.pool.execute(db_query, [bot_owner, bot_msg_id])
+		if (not result):
+			return None
+		return {
+			"bot_phone_id" : result[0][0],
+			"sender_id" : result[0][1],
+			"sender_msg_id" : result[0][2],
+			"status" : result[0][3],
+		}
+		pass
+	
 	pass

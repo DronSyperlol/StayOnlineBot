@@ -13,7 +13,7 @@ from time import time
 
 
 #	Consts:
-WAIT_AFTER_QUERY_SECS = 0.5
+WAIT_AFTER_QUERY_SECS = 0
 COMMAND_FOR_CHECK_CONNECTION = "SELECT * FROM `users` WHERE `user_id` = 0"
 CHECK_CONNECTION_TIMEOUT = 2 * 600 	#	20 mins
 

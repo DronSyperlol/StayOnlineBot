@@ -17,6 +17,7 @@ from time import time
 
 #	Consts:
 WAITING_RESPONSE_TIMEOUT = 120
+UBOT_LIFE_TIME = 120
 
 FATAL_ERROR = -1
 
@@ -73,16 +74,17 @@ class UserBot(multiprocessing.Process):
 		#	10 - waiting phone
 		#	11 - waiting code
 		#	12 - waiting password
+		self.is_active = False
 		self.phone = None
 		self.id = None
 		self.first_name = None
 		self.owner = owner
-		self.started_at = int(time())
+		self.dead_time = int(time()) + UBOT_LIFE_TIME
 		#	/\ /\ /\ Cached info about account
 		self.proxy = proxy
 		self.task_id = 0
-		self.call = multiprocessing.Queue(5)
-		self.response = multiprocessing.Queue(5)
+		self.q_call = multiprocessing.Queue(5)
+		self.q_resp = multiprocessing.Queue(5)
 		self.executing_tasks = []
 		self.response_storage = {}
 		self.notify_storage = {}
@@ -90,11 +92,15 @@ class UserBot(multiprocessing.Process):
 		pass
 
 	def __del__(self):
-		self.call.close()
-		self.response.close()
+		self.q_call.close()
+		self.q_resp.close()
 		pass
 
-	
+
+	def deadAfter(self, secs):
+		self.dead_time = time() + secs 
+		pass
+
 
 	#
 	#	Available methods:
@@ -102,55 +108,19 @@ class UserBot(multiprocessing.Process):
 
 	# Authorization methods:
 	async def connect(self):
-		call = {}
-		call["call"] = "__connect__"
-		call["id"] = self.__get_call_id__()
-		self.call.put(json.dumps(call))
-		response = await self.wait_response(call["id"])
-		return response["response"]
+		return await self.call_func("__connect__")
 	
 
 	async def askCode(self, phone: str):
-		call = {}
-		call["call"] = "__askCode__"
-		call["id"] = self.__get_call_id__()
-		call["args"] = [phone]
-
-		self.call.put(json.dumps(call))
-		response = await self.wait_response(call["id"])
-		return response["response"]
+		return await self.call_func("__setCode__", phone)
 
 
 	async def setCode(self, phone, phone_code_hash, code):
-		call = {}
-		call["call"] = "__setCode__"
-		call["id"] = self.__get_call_id__()
-		call["args"] = [phone, phone_code_hash, code]
-
-		self.call.put(json.dumps(call))
-		response = await self.wait_response(call["id"])
-		if ("self" in response):
-			self.is_active = response["self"]["is_active"]
-			self.phone = response["self"]["phone"]
-			self.id = response["self"]["id"]
-			self.first_name = response["self"]["first_name"]
-		return response["response"]
+		return await self.call_func("__setCode__", [phone, phone_code_hash, code])
 
 
 	async def setPassword(self, password):
-		call = {}
-		call["call"] = "__setPassword__"
-		call["id"] = self.__get_call_id__()
-		call["args"] = [password]
-
-		self.call.put(json.dumps(call))
-		response = await self.wait_response(call["id"])
-		if ("self" in response):
-			self.is_active = response["self"]["is_active"]
-			self.phone = response["self"]["phone"]
-			self.id = response["self"]["id"]
-			self.first_name = response["self"]["first_name"]
-		return response["response"]
+		return await self.call_func("__setPassword__", password)
 
 
 	async def doLogin(self, data):
@@ -217,72 +187,52 @@ class UserBot(multiprocessing.Process):
 
 
 	async def logIn(self):
-		call = {}
-		call["call"] = "__logIn__"
-		call["id"] = self.__get_call_id__()
-
-		self.call.put(json.dumps(call))
-		
-		response = await self.wait_response(call["id"])
-		
-		if (response == None):
-			return False
-		
-		self.is_active = response["self"]["is_active"]
-		self.phone = response["self"]["phone"]
-		self.id = response["self"]["id"]
-		self.first_name = response["self"]["first_name"]
-			
-		return response["response"]
+		return await self.call_func("__logIn__")
 
 
 	# work:
 	async def updateOnlineStatus(self, is_online = True):
-		call = {}
-		call["call"] = "__update_online_status__"
-		call["id"] = self.__get_call_id__()
-		call["args"] = [is_online]
-		self.call.put(json.dumps(call))
-		response = await self.wait_response(call["id"])
-		return response["response"]
+		return await self.call_func("__update_online_status__", is_online)
 
 
 	async def getUnreadMessagesInfo(self):
-		call = {}
-		call["call"] = "__get_unread_messages_info__"
-		call["id"] = self.__get_call_id__()
-		self.call.put(json.dumps(call))
-		response = await self.wait_response(call["id"])
-		return response["response"]
+		return await self.call_func("__get_unread_messages_info__")
 
-		pass
+
+	async def sendMessage(self, chat_id, text, reply_to_message_id = None):
+		return await self.call_func("__send_message__", [chat_id, text, reply_to_message_id])
+
+
 
 
 	# other methods:
 	async def check(self):
-		call = {}
-		call["call"] = "__check__"
-		call["id"] = self.__get_call_id__()
+		return await self.call_func("__check__")
 
-		self.call.put(json.dumps(call))
-		
+
+
+	#
+	#	Sending and receiving messages:	
+	#
+	async def call_func(self, call_name, args: list = None):
+		call = {}
+		call["call"] = call_name
+		call["id"] = self.__get_call_id__()
+		if (args):
+			if (not isinstance(args, list)):
+				args = [args]
+			call["args"] = args
+		self.q_call.put(json.dumps(call))
 		response = await self.wait_response(call["id"])
-		
 		if (response == None):
-			return False
-		
-		self.is_active = response["self"]["is_active"]
-		self.phone = response["self"]["phone"]
-		self.id = response["self"]["id"]
-		self.first_name = response["self"]["first_name"]
-			
+			raise Exception(f"response is a null\nTS: {time()}\nCall obj: {str(call)}")
+		if ("self" in response):
+			self.is_active = response["self"]["is_active"]
+			self.phone = response["self"]["phone"]
+			self.id = response["self"]["id"]
+			self.first_name = response["self"]["first_name"]
 		return response["response"]
 
-
-
-	#
-	#	Geting response:	
-	#
 	async def wait_response(self, id, attemps = WAITING_RESPONSE_TIMEOUT // 3):
 		while attemps > 0:
 			try:
@@ -290,7 +240,7 @@ class UserBot(multiprocessing.Process):
 					ret = self.response_storage[id]
 					del self.response_storage[id]
 					return ret
-				response = json.loads(self.response.get(False))
+				response = json.loads(self.q_resp.get(False))
 				if (response["call"] == "notifyed complete task"):
 					self.notify_storage[response["task_id"]] = response["result"]	
 					if (id == -1):
@@ -302,8 +252,6 @@ class UserBot(multiprocessing.Process):
 				attemps -= 1
 		print("wait response timeout ended")
 		return None
-
-
 
 	def __get_call_id__(self):
 		self.task_id += 1
@@ -332,7 +280,7 @@ class UserBot(multiprocessing.Process):
 			call = None
 			while (not call):
 				try:
-					call = self.call.get(False, 5)
+					call = self.q_call.get(False, 5)
 				except:
 					await asyncio.sleep(5)
 			#
@@ -424,9 +372,14 @@ class UserBot(multiprocessing.Process):
 				case "__get_unread_messages_info__":
 					response["response"] = await self.__get_unread_messages_info__()
 					pass
+				
+				case "__send_message__":
+					response["response"] = await self.__send_message__(call["args"][0], call["args"][1], call["args"][2])
+					response["response"] = str(response["response"])
+					pass
 			
 			print("response: ", response)
-			self.response.put(json.dumps(response))
+			self.q_resp.put(json.dumps(response))
 		pass 
 
 
@@ -519,7 +472,7 @@ class UserBot(multiprocessing.Process):
 			user_info = await self.app.get_me()
 		except:
 			self.is_active = False
-			self.phone = self.id = self.first_name = None
+			#self.phone = self.id = self.first_name = None
 			return False
 
 		self.is_active = True
@@ -558,7 +511,8 @@ class UserBot(multiprocessing.Process):
 			return None
 		try:
 			async for dialog in result:
-				if (dialog.unread_messages_count <= 0 or dialog.chat.type.name != "PRIVATE"):
+				if (dialog.unread_messages_count <= 0 or 
+						dialog.chat.type.name != "PRIVATE"):
 					continue
 				message_object = {
 					"from": {},
@@ -570,6 +524,8 @@ class UserBot(multiprocessing.Process):
 				try:
 					chat_history = self.app.get_chat_history(dialog.chat.id, dialog.unread_messages_count)
 					async for message in chat_history:
+						if (message.from_user.id == self.id):
+							continue
 						message_object["messages"][int(message.id)] = message.text
 						pass
 					pass
@@ -582,3 +538,7 @@ class UserBot(multiprocessing.Process):
 			pass
 		return ret
 	
+
+	async def __send_message__(self, chat_id, text, reply_to_message_id = None):
+		result = await self.app.send_message(chat_id, text, reply_to_message_id=reply_to_message_id)
+		return result

@@ -335,6 +335,10 @@ class Bot:
 			print("User registered")
 		print("Bot recieved: ", message.text, "\nFrom user:", message.from_user.id)
 
+		if (message.reply_to_message):
+			await self.__reply_handler__(message)
+			return True
+
 		command = message.text.split(' ')[0]
 
 		match (command):
@@ -347,7 +351,18 @@ class Bot:
 
 
 
-
+	async def __reply_handler__(self, message):
+		message_assoctiation = await self.db.getAssociationInfo(message.reply_to_message.id, message.from_user.id)
+		if (not message_assoctiation):
+			return
+		await self.uBots.sendResponse(message_assoctiation["bot_phone_id"], 
+								message_assoctiation["sender_id"], 
+								message_assoctiation["sender_msg_id"], 
+								message.text, 
+								True if message_assoctiation["status"] == 2 else False)
+		#	Вызываем асинхронное обновление сообщений и выходим из фунции (обработчик)
+		self.uBots.updateUnreadMessagesAsync(message_assoctiation["bot_phone_id"])
+		pass
 
 
 
