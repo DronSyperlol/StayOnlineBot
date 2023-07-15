@@ -182,8 +182,8 @@ class UserBots:
 
 
 	async def updateUnreadMessages(self, bot_phone_id):
-		bot = self.getBot(bot_phone_id)
-		bot.deadAfter(80)
+		bot = self.getOrStartUBot(bot_phone_id)
+		bot.deadAfter(120)
 		await asyncio.sleep(60)
 		result = await bot.getUnreadMessagesInfo()
 		for sender_object in result:
