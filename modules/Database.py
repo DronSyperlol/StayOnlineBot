@@ -116,16 +116,29 @@ class DataBase:
 		pass
 
 	async def getAssociationInfo(self, bot_msg_id, bot_owner):
-		db_query = "SELECT ma.bot_phone_id, ma.sender_id, ma.sender_msg_id, ma.status FROM `message_association` AS ma INNER JOIN `bots` AS b ON ma.bot_phone_id = b.bot_phone_id WHERE b.owner = ? AND ma.bot_msg_id = ?"
+		db_query = "SELECT ma.bot_phone_id, ma.sender_id, s.username as str_sender_id, ma.sender_msg_id, ma.status FROM `message_association` AS ma INNER JOIN `bots` AS b ON ma.bot_phone_id = b.bot_phone_id INNER JOIN `senders` AS s ON ma.sender_id = s.id WHERE b.owner = ? AND ma.bot_msg_id = ?"
 		result = await self.pool.execute(db_query, [bot_owner, bot_msg_id])
 		if (not result):
 			return None
 		return {
 			"bot_phone_id" : result[0][0],
 			"sender_id" : result[0][1],
-			"sender_msg_id" : result[0][2],
-			"status" : result[0][3],
+			"str_sender_id" : result[0][2],
+			"sender_msg_id" : result[0][3],
+			"status" : result[0][4],
 		}
 		pass
 	
+
+	#	senders:
+	async def newSender(self, id, username):
+		db_query = "INSERT INTO `senders` VALUES (?, ?) ON DUPLICATE KEY UPDATE `username` = VALUES(`username`)"
+		await self.pool.execute(db_query, [id, username])
+		pass
+
+	async def getSenderUsername(self, id):
+		db_query = "SELECT `username` FROM `senders` WHERE `id` = ?"
+		result = await self.pool.execute(db_query, [id])
+		return result[0][0]
+
 	pass

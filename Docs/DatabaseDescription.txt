@@ -1,5 +1,16 @@
 Database `py_onliner`
 
++----------------------+
+| Tables_in_py_onliner |
++----------------------+
+| bots                 |
+| message_association  |
+| senders              |
+| users                |
++----------------------+
+
+
+
 
 Table `users`:
 	+-----------+--------------+------+-----+---------+-------+
@@ -48,7 +59,7 @@ Table `message_association`:
 	| Field         | Type    | Null | Key | Default | Extra |
 	+---------------+---------+------+-----+---------+-------+
 	| bot_phone_id  | bigint  | NO   | MUL | NULL    |       |
-	| sender_id     | bigint  | NO   |     | NULL    |       |
+	| sender_id     | bigint  | NO   | MUL | NULL    |       |
 	| sender_msg_id | int     | NO   |     | NULL    |       |
 	| bot_msg_id    | int     | NO   |     | NULL    |       |
 	| status        | tinyint | NO   |     | NULL    |       |
@@ -60,7 +71,13 @@ Table `message_association`:
 
 
 
-
+Table `senders`:
+	+----------+-------------+------+-----+---------+-------+
+	| Field    | Type        | Null | Key | Default | Extra |
+	+----------+-------------+------+-----+---------+-------+
+	| id       | bigint      | NO   | PRI | NULL    |       |
+	| username | varchar(32) | YES  |     | NULL    |       |
+	+----------+-------------+------+-----+---------+-------+
 
 
 
@@ -82,11 +99,17 @@ CREATE TABLE `bots` (
 	KEY `owner` (`owner`),
 	FOREIGN KEY (`owner`) REFERENCES `users` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 );
+CREATE TABLE `senders` (
+	`id` BIGINT NOT NULL PRIMARY KEY,
+	`username` VARCHAR(32)
+);
 CREATE TABLE `message_association` (
 	`bot_phone_id` BIGINT NOT NULL,
 	`sender_id` BIGINT NOT NULL,
 	`sender_msg_id` INT NOT NULL,
 	`bot_msg_id` INT NOT NULL,
 	`status` TINYINT NOT NULL,
-	FOREIGN KEY (`bot_phone_id`) REFERENCES `bots` (`bot_phone_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+	FOREIGN KEY (`bot_phone_id`) REFERENCES `bots` (`bot_phone_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+	FOREIGN KEY (`sender_id`) REFERENCES `senders` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 );
+

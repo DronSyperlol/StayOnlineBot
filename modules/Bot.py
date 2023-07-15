@@ -268,16 +268,23 @@ class Bot:
 				case "dismiss":	#	page
 					if (not last_action):
 						return
-					arg = int(data.data.split(' ', 1)[1])
-					if (last_action["code"] == 100):
-						if ("is_dismiss" in last_action["arg"]):
-							self.access.dismiss(arg)
-							await self.db.updateUserRank(arg)
-							await self.__access_list_page__(data.message.chat.id, data.from_user.id, update_message, last_action["arg"]["page"])
-							del last_action["arg"]["is_dismiss"]
-						else:
-							last_action["arg"]["is_dismiss"] = True
-							await self.__show_user__(data.message.chat.id, arg, update_message, True)
+					if (last_action["code"] != 100):
+						return
+
+					args = data.data.split(' ', 2)
+					if (len(args) >= 2):
+						user_id = int(args[1])
+					if (len(args) >= 3):
+						is_aproved = True
+					else:
+						is_aproved = False
+
+					if (is_aproved):
+						self.access.dismiss(user_id)
+						await self.db.updateUserRank(user_id)
+						await self.__access_list_page__(data.message.chat.id, data.from_user.id, update_message, last_action["arg"]["page"])
+					else:
+						await self.__show_user__(data.message.chat.id, user_id, update_message, True)
 					self.la.set(data.from_user.id, last_action["code"], last_action["arg"])
 					pass
 
@@ -358,10 +365,11 @@ class Bot:
 		await self.uBots.sendResponse(message_assoctiation["bot_phone_id"], 
 								message_assoctiation["sender_id"], 
 								message_assoctiation["sender_msg_id"], 
-								message.text, 
+								message.text,
+								message_assoctiation["str_sender_id"],
 								True if message_assoctiation["status"] == 2 else False)
 		#	Вызываем асинхронное обновление сообщений и выходим из фунции (обработчик)
-		self.uBots.updateUnreadMessagesAsync(message_assoctiation["bot_phone_id"])
+		self.uBots.setAction(lambda : self.uBots.updateUnreadMessages(message_assoctiation["bot_phone_id"]))
 		pass
 
 
@@ -387,32 +395,46 @@ class Bot:
 
 
 	#
-	#	Send UBot message notify
+	#	Processing new messages:
 	#
-	async def notifyAboutMessages(self, sender_object, bot_phone_id, owner):
-		self.bot.send_message(
-			owner,
-			"<b>Получены новые сообщения от пользователя:</b>\n" +
-			f"<a href=\"tg://user?id={sender_object['from']['id']}\">{sender_object['from']['first_name']}</a>\n" +
-			f'Username: {"@" + sender_object["from"]["username"] if sender_object["from"]["username"] else "<i>none</i>"}\n\n' +
-			"<i>Для ответа на сообщение, ответьте (сдвиньте влево) на интересующее сообщение:</i>\n\n" +
-			"<b>Сообщения предоставлены ниже:</b>",
-			"html",
-			disable_web_page_preview=True
-		)
+	async def processNewMessages(self, sender_object, bot_phone_id, bot_user_id, owner):
+		await self.db.newSender(sender_object["from"]["id"], sender_object["from"]["username"])
+		messages = []
 		for msg_id, msg_text in sender_object["messages"].items():
 			msg_id = int(msg_id)
+			messages.append({
+				"id": msg_id,
+				"text": msg_text
+			})
+			pass
+		messages.reverse()
+		asyncio.create_task(self.__notifyAboutMessages__(sender_object, messages, bot_phone_id, bot_user_id, owner))
+		pass
+
+	async def __notifyAboutMessages__(self, sender_object, messages_list, bot_phone_id, bot_user_id, owner):	# private (типа)
+		text = (
+			"<b>✉️  Получены новые сообщения от пользователя:</b> " +
+			f"<a href=\"tg://user?id={sender_object['from']['id']}\">{sender_object['from']['first_name']}</a>" +
+			f"{' (@' + sender_object['from']['username'] + ')' if sender_object['from']['username'] else ''}\n\n"
+			f"🤖  Получены ботом: <a href=\"tg://user?id={bot_user_id}\">{bot_phone_id}</a>\n\n" +
+			"<i>Для ответа на сообщение, ответьте (сдвиньте влево) на интересующее сообщение:</i>\n\n" +
+			"<b>Сообщения предоставлены ниже: ⬇️</b>"
+		)
+		self.bot.send_message(owner, text, "html", disable_web_page_preview=True)
+		for message in messages_list:
 			result = self.bot.send_message(
 				owner, 
 				f"<a href=\"tg://user?id={sender_object['from']['id']}\">{sender_object['from']['first_name']}:</a>\n" +
-				msg_text,
+				message["text"],
 				"html",
 				disable_web_page_preview=True				
 			)
 			await self.db.updateAssociationStatus(bot_phone_id, sender_object['from']['id'], 2)
-			await self.db.newAssociation(bot_phone_id, sender_object['from']['id'], msg_id, result.id, 1)
+			await self.db.newAssociation(bot_phone_id, sender_object['from']['id'], message["id"], result.id, 1)
 			pass
 		pass
+
+
 
 
 	#

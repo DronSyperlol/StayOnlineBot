@@ -21,11 +21,25 @@ class UserBots:
 		self.lower_threshold = lower_threshold
 		self.upper_threshold = upper_threshold
 		self.sessions = self.getLocalSessions()
-		self.notifyAboutMessages = None 
+		self.processNewMessages = None 
+		self.action_queue = []
 
+	#	Configure object
+	def initCallbacks(self, processNewMessages):
+		self.processNewMessages = processNewMessages
+		pass
 
-	def setCallbacks(self, notifyAboutMessages):
-		self.notifyAboutMessages = notifyAboutMessages
+	#	Executing in self thread:
+	def setAction(self, lambda_func_for_run):
+		self.action_queue.append(lambda_func_for_run)
+		pass
+	
+	def checkAndRunActions(self):
+		while self.action_queue:
+			action = self.action_queue.pop(0)
+			asyncio.create_task(
+				action()
+			)
 		pass
 
 
@@ -155,8 +169,7 @@ class UserBots:
 		for task in get_messages_tasks:
 			result = await task["task"]
 			for sender_object in result:
-				await self.notifyAboutMessages(sender_object, int(task["bot"].phone), task["bot"].owner)
-			print(result)
+				await self.processNewMessages(sender_object, int(task["bot"].phone), task["bot"].id, task["bot"].owner)
 			pass
 
 		for task in get_messages_tasks:
@@ -168,28 +181,24 @@ class UserBots:
 		return int(time() + randint(self.lower_threshold, self.upper_threshold))
 
 
-	def updateUnreadMessagesAsync(self, bot_phone_id):
-		async def __updateUnreadMessagesAsync__(bot: UserBot):
-			bot.deadAfter(80)
-			await asyncio.sleep(60)
-			result = await bot.getUnreadMessagesInfo()
-			for sender_object in result:
-				await self.notifyAboutMessages(sender_object, int(bot.phone), bot.owner)
-			pass
-		asyncio.create_task(	#	Call async method
-			__updateUnreadMessagesAsync__(
-				self.getBot(bot_phone_id)
-			)
-		)
+	async def updateUnreadMessages(self, bot_phone_id):
+		bot = self.getBot(bot_phone_id)
+		bot.deadAfter(80)
+		await asyncio.sleep(60)
+		result = await bot.getUnreadMessagesInfo()
+		for sender_object in result:
+			await self.processNewMessages(sender_object, int(bot.phone), bot.id, bot.owner)
 		pass
 
 
+
+
 	# Respones for sender:
-	async def sendResponse(self, bot_phone_id, sender_id, sender_msg_id, text, is_reply = False):
+	async def sendResponse(self, bot_phone_id, sender_id, sender_msg_id, text, str_sender_id, is_reply = False):
 		if (not is_reply):
 			sender_msg_id = None	# Если это не ответ, то id сообщения нахуй не нужен
 		bot = await self.getOrStartUBot(bot_phone_id)
-		await bot.sendMessage(sender_id, text, sender_msg_id)
+		await bot.sendMessage(sender_id, text, str_sender_id, sender_msg_id)
 		pass
 
 
@@ -200,7 +209,7 @@ class UserBots:
 		pass
 	
 	async def killOldUBots(self):
-		for key, bot in enumerate(self.loaded_sessions):
+		for key, bot in self.loaded_sessions.items():
 			if (bot.dead_time < time()):
 				self.killUBot(key)
 				pass

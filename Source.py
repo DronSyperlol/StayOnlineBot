@@ -40,6 +40,13 @@ def main():
 			pass
 		pass
 
+	async def thread_action_checker(uBots: UserBots, timeout):
+		while True:
+			uBots.checkAndRunActions()
+			await asyncio.sleep(timeout)
+			pass
+		pass
+
 
 	#	Consts:
 	CONFIG_FILE = "./data/config.cfg"
@@ -89,7 +96,7 @@ def main():
 				uBots
 			)
 
-	uBots.setCallbacks(bot.notifyAboutMessages)
+	uBots.initCallbacks(bot.processNewMessages)
 
 	#	Clear memory:
 	del db_key
@@ -98,9 +105,11 @@ def main():
 	async def async_main(config):
 		updater_task = asyncio.create_task(status_updater(uBots, int(config["bot"]["UPDATER_ONLINE_TIMEOUT"])))
 		bot_killer_task = asyncio.create_task(bot_life_checker(uBots, int(config["bot"]["KILL_OLD_BOTS_TIMEOUT"])))
+		check_action_task = asyncio.create_task(thread_action_checker(uBots, int(config["bot"]["CHECK_ACTION_TIMEOUT"])))
 
 		await updater_task
 		await bot_killer_task
+		await check_action_task
 		pass
 
 	asyncio.run(async_main(config))

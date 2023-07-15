@@ -199,8 +199,8 @@ class UserBot(multiprocessing.Process):
 		return await self.call_func("__get_unread_messages_info__")
 
 
-	async def sendMessage(self, chat_id, text, reply_to_message_id = None):
-		return await self.call_func("__send_message__", [chat_id, text, reply_to_message_id])
+	async def sendMessage(self, chat_id, text, str_chat_id, reply_to_message_id = None):
+		return await self.call_func("__send_message__", [chat_id, text, str_chat_id, reply_to_message_id])
 
 
 
@@ -374,7 +374,7 @@ class UserBot(multiprocessing.Process):
 					pass
 				
 				case "__send_message__":
-					response["response"] = await self.__send_message__(call["args"][0], call["args"][1], call["args"][2])
+					response["response"] = await self.__send_message__(call["args"][0], call["args"][1], call["args"][2], call["args"][3])
 					response["response"] = str(response["response"])
 					pass
 			
@@ -539,6 +539,19 @@ class UserBot(multiprocessing.Process):
 		return ret
 	
 
-	async def __send_message__(self, chat_id, text, reply_to_message_id = None):
-		result = await self.app.send_message(chat_id, text, reply_to_message_id=reply_to_message_id)
-		return result
+	async def __send_message__(self, chat_id, text, str_chat_id = "", reply_to_message_id = None):
+		try:
+			await self.app.read_chat_history(chat_id)
+			result = await self.app.send_message(chat_id, text, reply_to_message_id=reply_to_message_id)
+			return result
+		except:
+			if (not str_chat_id):
+				return None
+			pass
+		try:
+			await self.app.read_chat_history(str_chat_id)
+			result = await self.app.send_message(str_chat_id, text, reply_to_message_id=reply_to_message_id)
+			return result
+		except:
+			return None
+		pass
