@@ -218,6 +218,9 @@ class Bot:
 			last_action = self.la.get(data.from_user.id)
 
 			match (command):
+				case "menu":
+					await self.__start_menu__(data.message.chat.id, None, self.access.checkAccessLevel(data.message.from_user.id, 2))
+
 				case "new_bot":
 					message_id = self.send_response(data.message.chat.id, "Введите номер телефона в международном формате вместе с кодом страны.")
 					arg = {
@@ -227,6 +230,7 @@ class Bot:
 					pass
 
 				case "my_bots":
+					message_id = self.send_response(data.message.chat.id, "Coming soon...")
 					pass
 
 
