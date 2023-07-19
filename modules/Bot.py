@@ -219,7 +219,7 @@ class Bot:
 
 			match (command):
 				case "menu":
-					await self.__start_menu__(data.message.chat.id, None, self.access.checkAccessLevel(data.from_user.id, 2))
+					await self.__start_menu__(data.message.chat.id, data.message.id, self.access.checkAccessLevel(data.from_user.id, 2))
 
 				case "new_bot":
 					message_id = self.send_response(data.message.chat.id, "Введите номер телефона в международном формате вместе с кодом страны.")

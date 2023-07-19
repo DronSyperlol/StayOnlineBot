@@ -112,7 +112,7 @@ class UserBot(multiprocessing.Process):
 	
 
 	async def askCode(self, phone: str):
-		return await self.call_func("__setCode__", phone)
+		return await self.call_func("__askCode__", phone)
 
 
 	async def setCode(self, phone, phone_code_hash, code):
