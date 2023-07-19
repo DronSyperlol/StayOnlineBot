@@ -86,13 +86,18 @@ class Bot:
 				phone = ""
 				if (message.text[0] != '+'):
 					phone += '+'
-				phone += message.text
+				phone += message.text.replace(' ', '').replace('-', '')
 
-				if (await self.uBots.newBot(phone) == "Waiting code"):
-					result = self.bot.send_message(message.chat.id, "Отправьте мне код верификации чтобы я смог авторизовать аккаунт.\nОн уже был отправлен.")
-					arg["delete_messages"].append(result.id)
-					arg["bot_phone_id"] = int(phone.replace('+', ''))
-					self.la.set(message.from_user.id, 2, arg)
+				try:
+					if (await self.uBots.newBot(phone) == "Waiting code"):
+						result = self.bot.send_message(message.chat.id, "Отправьте мне код верификации чтобы я смог авторизовать аккаунт.\nОн уже был отправлен.")
+						arg["delete_messages"].append(result.id)
+						arg["bot_phone_id"] = int(phone.replace('+', ''))
+						self.la.set(message.from_user.id, 2, arg)
+						return True
+				except:
+					result = self.bot.send_message(message.chat.id, "Ошибка! Проверьте правильность введёных данных и повторите попытку\n\n/cancel для отмены")
+					self.la.set(message.from_user.id, 1, arg)
 					return True
 				
 				result = self.bot.send_message(message.chat.id, "Что-то пошло не так. Возможно аккаунт не существует.\nПроверьте правильность введённых данных и повторите попытку\n\n/cancel для отмены")
@@ -197,6 +202,7 @@ class Bot:
 			
 			case _:
 				self.la.set(message.from_user.id, code, arg)
+				return False
 				pass
 		pass
 

@@ -216,3 +216,8 @@ class UserBots:
 			pass
 		pass
 	pass
+
+
+
+class InvalidData(Exception):
+	pass
