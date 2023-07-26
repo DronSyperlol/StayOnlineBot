@@ -5,6 +5,13 @@
 #	+-------
 
 
+class User:
+	def __init__(self, user_id, rank):
+		self.user_id = user_id
+		self.rank = rank
+	pass
+
+
 #   Access codes:
 ROOT = 9    #   9x -> 90 - 99
 AMDIN = 8   #   8x -> 80 - 89
@@ -34,12 +41,7 @@ class Access:
 		if (self.__exists__(user_id)):
 			self.__set_last_error__(58, "Access already given")
 			return False
-		self.white_list.append(
-			{
-				"user_id" : user_id,
-				"rank" : rank
-			}
-		)
+		self.white_list.append(User(user_id, rank))
 		return True
 	
 	def dismiss(self, user_id):
@@ -52,7 +54,7 @@ class Access:
 	def updateRank(self, user_id, new_rank = 0):
 		user = self.__find__(user_id)
 		if (user):
-			self.white_list[self.white_list.index(user)]["rank"] = new_rank
+			self.white_list[self.white_list.index(user)].rank = new_rank
 			return True
 		return False
 
@@ -77,7 +79,7 @@ class Access:
 		user = self.__find__(user_id)
 		if (not user):
 			return False
-		match (user["rank"] // 10):
+		match (user.rank // 10):
 			case 9:
 				if (level <= 3):
 					return True
@@ -97,17 +99,20 @@ class Access:
 
 
 	#	Giving info:
-	def list(self):
+	def list(self) -> list | User:
 		ret = []
 		for user in self.white_list:
-			ret.append({user["user_id"] : user["rank"]})
+			ret.append({user.user_id : user.rank})
 			pass
 		return ret
+
+	def count(self):
+		return len(self.white_list)
 	
 	def getRank(self, user_id):
 		user = self.__find__(user_id)
 		if (user):
-			return user["rank"]
+			return user.rank
 		return 0
 
 
@@ -115,8 +120,8 @@ class Access:
 	#	Total actions:
 	def initAll(self):
 		for index, value in enumerate(self.white_list):
-			rank = (value["rank"] // 10) * 10
-			self.white_list[index]["rank"] = rank + 8
+			rank = (value.rank // 10) * 10
+			self.white_list[index].rank = rank + 8
 			pass
 		pass
 
@@ -136,14 +141,14 @@ class Access:
 	#   Work with white list:
 	def __find__(self, user_id):
 		for user in self.white_list:
-			if (user["user_id"] == user_id):
+			if (user.user_id == user_id):
 				return user
 		return None
 
 		
 	def __exists__(self, user_id):
 		for user in self.white_list:
-			if (user["user_id"] == user_id):
+			if (user.user_id == user_id):
 				return True
 		return False
 

@@ -95,6 +95,7 @@ CREATE TABLE `users` (
 CREATE TABLE `bots` (
 	`bot_phone_id` BIGINT NOT NULL PRIMARY KEY,
 	`owner` BIGINT NOT NULL,
+	`proxy_hostname` VARCHAR(15),
 	`next_login` INT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
 	KEY `owner` (`owner`),
 	FOREIGN KEY (`owner`) REFERENCES `users` (`user_id`) ON DELETE NO ACTION ON UPDATE NO ACTION
@@ -109,7 +110,14 @@ CREATE TABLE `message_association` (
 	`sender_msg_id` INT NOT NULL,
 	`bot_msg_id` INT NOT NULL,
 	`status` TINYINT NOT NULL,
-	FOREIGN KEY (`bot_phone_id`) REFERENCES `bots` (`bot_phone_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+	FOREIGN KEY (`bot_phone_id`) REFERENCES `bots` (`bot_phone_id`) ON DELETE CASCADE ON UPDATE NO ACTION,
 	FOREIGN KEY (`sender_id`) REFERENCES `senders` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 );
 
+
+Обновление БД:
+ALTER TABLE `bots` ADD COLUMN `proxy_hostname` VARCHAR(15);
+SELECT CONSTRAINT_NAME FROM `information_schema`.`KEY_COLUMN_USAGE` WHERE TABLE_SCHEMA = 'py_onliner' AND TABLE_NAME = 'message_association' AND REFERENCED_COLUMN_NAME = 'bot_phone_id';
+
+ALTER TABLE `py_onliner`.`message_association` DROP FOREIGN KEY ``;
+ALTER TABLE `py_onliner`.`message_association` ADD CONSTRAINT `` FOREIGN KEY (`bot_phone_id`) REFERENCES `bots` (`bot_phone_id`) ON DELETE CASCADE ON UPDATE NO ACTION;

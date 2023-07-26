@@ -1,4 +1,6 @@
-pip install telebot
-pip install pyrogram
-pip install tgcrypto
-pip install mysql-connector-python
+telebot
+pyrogram
+tgcrypto
+mysql-connector-python
+aiohttp
+aiohttp_socks

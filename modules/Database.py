@@ -1,5 +1,6 @@
 from modules.MySql import Pool
 #import asyncio
+from modules.Structs import UserInfo, BotInfo, AssociationInfo, ProxyStat
 
 
 
@@ -44,38 +45,28 @@ class DataBase:
 		pass
 
 
-	async def getUserInfo(self, user_id):
+	async def getUserInfo(self, user_id) -> UserInfo:
 		db_query = "SELECT * FROM `users` WHERE `user_id` = ?"
 		result = await self.pool.execute(db_query, [user_id])
-		return {
-			"user_id": result[0][0],
-			"full_name": result[0][1], 
-			"username": result[0][2],
-			"rank": result[0][3]
-		}
+		return UserInfo(result[0][0], result[0][1], result[0][2], result[0][3])
 		pass
 
 
-	async def getWhiteList(self):
+	async def getWhiteList(self) -> list | UserInfo:
 		db_query = "SELECT * FROM `users` WHERE `rank` > 0"
 		result = await self.pool.execute(db_query)
 		ret = []
 		for row in result:
-			ret.append({
-				"user_id": row[0],
-				"full_name": row[1],
-				"username": row[2],
-				"rank": row[3]
-			})
+			ret.append(UserInfo(row[0], row[1], row[2], row[3]))
 		return ret
 	
 	
 
 
 	#	bots:
-	async def newBot(self, bot_phone_id, owner, next_login):
-		db_query = "INSERT INTO bots VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `bot_phone_id` = VALUES(`bot_phone_id`), `owner` = VALUES(`owner`)"
-		await self.pool.execute(db_query, [bot_phone_id, owner, next_login])
+	async def newBot(self, bot_phone_id, owner, proxy_hostname, next_login):
+		db_query = "INSERT INTO bots(`bot_phone_id`, `owner`, `proxy_hostname`, `next_login`) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE `bot_phone_id` = VALUES(`bot_phone_id`), `owner` = VALUES(`owner`)"
+		await self.pool.execute(db_query, [bot_phone_id, owner, proxy_hostname, next_login])
 		pass
 
 	async def updateNextLogin(self, bot_phone_id, next_login = None):
@@ -83,25 +74,44 @@ class DataBase:
 		await self.pool.execute(db_query, [next_login, bot_phone_id])
 		pass
 
-	async def getNearestNextLoginBots(self):
-		db_query = "SELECT * FROM `bots` WHERE `next_login` < UNIX_TIMESTAMP()"
+	async def getBotInfo(self, bot_phone_id) -> BotInfo:
+		db_query = "SELECT `bot_phone_id`, `owner`, `proxy_hostname`, `next_login` FROM `bots` WHERE `bot_phone_id` = ?"
+		result = await self.pool.execute(db_query, [bot_phone_id])
+		return BotInfo(result[0][0], result[0][1], result[0][2], result[0][3])
+
+	async def getNearestNextLoginBots(self) -> list | BotInfo:
+		db_query = "SELECT `bot_phone_id`, `owner`, `proxy_hostname`, `next_login` FROM `bots` WHERE `next_login` < UNIX_TIMESTAMP()"
 		result = await self.pool.execute(db_query)
 		ret = []
 		for row in result:
-			ret.append({
-				"bot_phone_id": row[0],
-				"owner": row[1], 
-				"next_login": row[2]
-			})
+			ret.append(BotInfo(row[0], row[1], row[2], row[3]))
 			pass
 		return ret
-		pass
 
 	async def getBotOwner(self, bot_phone_id):
 		db_query = "SELECT `owner` FROM `bots` WHERE `bot_phone_id` = ?"
 		result = await self.pool.execute(db_query, [bot_phone_id])
 		return result[0][0]
+	
+	
+	async def getProxyStat(self) -> list | ProxyStat:
+		db_query = "SELECT `proxy_hostname`, COUNT(user_id) FROM `sessions` WHERE `status` != -1 AND `proxy_hostname` IS NOT NULL GROUP BY `proxy_hostname`"
+		result = await self.pool.execute(db_query)
+		ret = []
+		for row in result:
+			ret.append(ProxyStat(row[0], row[1]))
+		return ret
+	
+	async def getBotsCount(self) -> int:
+		db_query = "SELECT COUNT(*) FROM `bots`"
+		result = await self.pool.execute(db_query)
+		return result[0][0]
+	
+	async def delBot(self, bot_phone_id):
+		db_query = "DELETE FROM `bots` WHERE `bot_phone_id` = ?"
+		await self.pool.execute(db_query, [bot_phone_id])
 		pass
+	
 
 
 	# message_association:
@@ -115,20 +125,18 @@ class DataBase:
 		await self.pool.execute(db_query, [new_status, bot_phone_id, sender_id])
 		pass
 
-	async def getAssociationInfo(self, bot_msg_id, bot_owner):
+	async def getAssociationInfo(self, bot_msg_id, bot_owner) -> AssociationInfo:
 		db_query = "SELECT ma.bot_phone_id, ma.sender_id, s.username as str_sender_id, ma.sender_msg_id, ma.status FROM `message_association` AS ma INNER JOIN `bots` AS b ON ma.bot_phone_id = b.bot_phone_id INNER JOIN `senders` AS s ON ma.sender_id = s.id WHERE b.owner = ? AND ma.bot_msg_id = ?"
 		result = await self.pool.execute(db_query, [bot_owner, bot_msg_id])
 		if (not result):
 			return None
-		return {
-			"bot_phone_id" : result[0][0],
-			"sender_id" : result[0][1],
-			"str_sender_id" : result[0][2],
-			"sender_msg_id" : result[0][3],
-			"status" : result[0][4],
-		}
-		pass
+		return AssociationInfo(result[0][0], result[0][1], result[0][2], result[0][3], result[0][4])
 	
+	async def delAssociationsByBot(self, bot_phone_id):
+		db_query = "DELETE FROM `bots` WHERE `bot_phone_id` = ?"
+		await self.pool.execute(db_query, [bot_phone_id])
+		pass
+
 
 	#	senders:
 	async def newSender(self, id, username):

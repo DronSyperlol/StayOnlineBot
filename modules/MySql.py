@@ -13,9 +13,9 @@ from time import time
 
 
 #	Consts:
-WAIT_AFTER_QUERY_SECS = 0
+FROZ_SOCKET_AFTER_QUERY_SECS = 0
+WAIT_AFTER_QUERY_SECS = 0.5
 COMMAND_FOR_CHECK_CONNECTION = "SELECT * FROM `users` WHERE `user_id` = 0"
-CHECK_CONNECTION_TIMEOUT = 2 * 600 	#	20 mins
 
 
 
@@ -40,12 +40,12 @@ class Pool:
 			connection = {
 				"connection": con,
 				"cursor": curs,
-				# "result": None,
 				"is_free": True,
-				"last_executing": 0
+				"frozen_to": 0
 			}
 			self.connections.append(connection)
 			pass
+
 		pass
 		
 		
@@ -53,33 +53,37 @@ class Pool:
 		self.__increment_and_update_query_stat__()
 		if args == None:
 			return await self.__execute__(command)
-		
 		command = await self.__parse_command__(command, args)
 		return await self.__execute__(command)
 		
 
 	async def __execute__(self, command):
-		attemps = 20
+		attemps = 120
 		result = None
+		# print(f"DB query: {command}")
 
 		while attemps > 0:
 			for index, connection in enumerate(self.connections):
-				if (connection["is_free"] and connection["last_executing"] < time() + WAIT_AFTER_QUERY_SECS):
+				if (connection["is_free"] and (connection["frozen_to"] < time())):
 					self.connections[index]["is_free"] = False
-					try:
-						connection["cursor"].execute(command)
-						result = connection["cursor"].fetchall()
-						connection["connection"].commit()
-					except Exception as e:
-						print(f"DATABASE EXCEPTION\n{e}\n===============\nQuery: {command}")
-						pass
-					self.connections[index]["last_executing"] = time()
-					self.connections[index]["is_free"] = True
-					return result
+					for _ in range(2):
+						try:
+							connection["cursor"].execute(command)
+							result = connection["cursor"].fetchall()
+							connection["connection"].commit()
+						except Exception as e:
+							print(f"DATABASE EXCEPTION\n{e}\n===============\nQuery: {command}")
+							self.__restart_connection__(index)
+							continue
+						self.connections[index]["frozen_to"] = time() + FROZ_SOCKET_AFTER_QUERY_SECS
+						self.connections[index]["is_free"] = True
+						# print(f"DB answer: {result}\nOn query: {command}")
+						return result
 			print("All connections busy, waiting free")
 			attemps -= 1
-			await asyncio.sleep(1)
+			await asyncio.sleep(WAIT_AFTER_QUERY_SECS)
 			pass
+		print(f"Not answer on query {command}\n\nattemps: {attemps}\n")
 		return None
 
 
@@ -100,45 +104,35 @@ class Pool:
 		prev_iter = 0
 		iter = 0
 		args_iter = 0
-		
 		while True:
 			iter = string.find("?", iter)
-
 			if (iter == -1):
 				normalized_string += string[prev_iter:]
 				break
-			
 			normalized_string += string[prev_iter:iter]
 			arg = args[args_iter]
 			args_iter += 1
-
 			if isinstance(arg, str):
 				normalized_string += await self.__shielding__(arg)
 			elif isinstance(arg, int):
 				normalized_string += str(arg)
 			elif arg == None:
 				normalized_string += "NULL"
-
 			iter += 1
 			if (iter >= len(string)):
 				break
 			prev_iter = iter
-
 		return normalized_string
 
 
 	async def __shielding__(self, string: "str") -> "str":
 		shielded_string = ""
-		
 		shielded_string += "'"
-
 		for symbol in string:
 			if symbol == "\"" or symbol == "\'" or symbol == "\\":
 				shielded_string += "\\" 
 			shielded_string += symbol 
-
 		shielded_string += "'"
-
 		return shielded_string
 	
 
@@ -151,38 +145,35 @@ class Pool:
 		pass
 
 
-	async def __connections_checker__(self):
-		while True:
-			if (await self.checkConnections()):
-				await asyncio.sleep(CHECK_CONNECTION_TIMEOUT)
-			pass
-		pass
-
-
 	async def checkConnections(self):
 		#	True - all good 
 		#	False - have restarts 
 		status = True
 		for index, connection in enumerate(self.connections.copy()):
-			if (connection["is_free"] and connection["last_executing"] < time() + WAIT_AFTER_QUERY_SECS):
+			if (connection["is_free"] and connection["frozen_to"] < time()):
 				self.connections[index]["is_free"] = False
 				try:
 					connection["cursor"].execute(COMMAND_FOR_CHECK_CONNECTION)
-					connection["cursor"].fetchall()
+					result = connection["cursor"].fetchall()
+					if (result == None):
+						self.__restart_connection__(index)
 				except Exception as e:
 					print(f"DB EXCEPTION: {e}\n\nSOCKET CLOSED!\nOne connection to database is broken!\nReconnect...")
-					con = mysql.connect(host=self.__host__, port=self.__port__, 
-										user=self.__user__, password=self.__password__, 
-										database=self.__database__)
-					curs = con.cursor()
-					self.connections[index]["connection"].disconnect()
-					self.connections[index]["connection"] = con
-					self.connections[index]["cursor"] = curs
+					self.__restart_connection__(index)
 					status = False
 					pass
-				self.connections[index]["last_executing"] = time()
+				self.connections[index]["frozen_to"] = time() + FROZ_SOCKET_AFTER_QUERY_SECS
 				self.connections[index]["is_free"] = True
 				pass
 			pass
 		return status
+	
+	def __restart_connection__(self, index):
+		con = mysql.connect(host=self.__host__, port=self.__port__, 
+							user=self.__user__, password=self.__password__, 
+							database=self.__database__)
+		self.connections[index]["connection"].disconnect()
+		self.connections[index]["connection"] = con
+		self.connections[index]["cursor"] = con.cursor()
+		pass
 	pass

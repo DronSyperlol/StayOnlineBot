@@ -16,6 +16,7 @@ def main():
 	from modules.Bot import Bot
 	from modules.Database import DataBaseAuthKey
 	from modules.UserBots import UserBots
+	from modules.Proxy import Proxys
 	from os.path import exists
 	from os import mkdir
 
@@ -47,6 +48,13 @@ def main():
 			pass
 		pass
 
+	async def proxys_checker(uBots: UserBots, timeout):
+		while True:
+			await uBots.checkProxys()
+			await asyncio.sleep(timeout)
+			pass
+		pass
+
 
 	#	Consts:
 	CONFIG_FILE = "./data/config.cfg"
@@ -69,47 +77,52 @@ def main():
 							config["database"]["MYSQL_PORT"],
 							config["database"]["MYSQL_USER"],
 							config["database"]["MYSQL_PASSWORD"],
-							config["database"]["MYSQL_DATABASE"]
-						)
+							config["database"]["MYSQL_DATABASE"])
 
 
 	admin_list = config["bot"]["ADMINS"].split(', ')
 	admin_list = [int(id) for id in admin_list]
 	
 
+	proxys = Proxys(config["paths"]["PROXYS_PATH"])
+	proxys.load()
+	
+
 	#	#	Init user bots:
-	uBots = UserBots(
-					config["paths"]["SESSIONS_PATH"], 
-					db_key, 
-					config["telegram"]["API_ID"], 
-					config["telegram"]["API_HASH"],
-					int(config["bot"]["NEXT_LOGIN_LOWER_THRESHOLD"]),
-					int(config["bot"]["NEXT_LOGIN_UPPER_THRESHOLD"])
-				)
+	uBots = UserBots(	config["paths"]["SESSIONS_PATH"], 
+						db_key, 
+						config["telegram"]["API_ID"], 
+						config["telegram"]["API_HASH"],
+						int(config["upool"]["NEXT_LOGIN_LOWER_THRESHOLD"]),
+						int(config["upool"]["NEXT_LOGIN_UPPER_THRESHOLD"]),
+						int(config["upool"]["MAX_LOADED_SESSIONS"]),
+						proxys)
 
 
 	#	#	Init and start bot
-	bot = Bot(
-				config["telegram"]["BOT_TOKEN"], 
+	bot = Bot(	config["telegram"]["BOT_TOKEN"], 
 				db_key, 
 				admin_list,
-				uBots
-			)
+				uBots)
 
-	uBots.initCallbacks(bot.processNewMessages)
+	uBots.initCallbacks(bot.processNewMessages,
+		     			bot.notifyAbouBrokeBot,
+						bot.notifyForAdminsAboutBrokenProxy)
 
 	#	Clear memory:
 	del db_key
 
 
 	async def async_main(config):
-		updater_task = asyncio.create_task(status_updater(uBots, int(config["bot"]["UPDATER_ONLINE_TIMEOUT"])))
-		bot_killer_task = asyncio.create_task(bot_life_checker(uBots, int(config["bot"]["KILL_OLD_BOTS_TIMEOUT"])))
-		check_action_task = asyncio.create_task(thread_action_checker(uBots, int(config["bot"]["CHECK_ACTION_TIMEOUT"])))
+		updater_task = asyncio.create_task(status_updater(uBots, int(config["upool"]["UPDATER_ONLINE_TIMEOUT"])))
+		bot_killer_task = asyncio.create_task(bot_life_checker(uBots, int(config["upool"]["KILL_OLD_BOTS_TIMEOUT"])))
+		check_action_task = asyncio.create_task(thread_action_checker(uBots, int(config["upool"]["CHECK_ACTION_TIMEOUT"])))
+		proxys_checker_task = asyncio.create_task(proxys_checker(uBots, int(config["upool"]["CHECK_PROXYS_TIMEOUT"])))
 
 		await updater_task
 		await bot_killer_task
 		await check_action_task
+		await proxys_checker_task
 		pass
 
 	asyncio.run(async_main(config))

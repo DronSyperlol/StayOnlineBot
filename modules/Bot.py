@@ -5,6 +5,8 @@ from modules.Access import Access
 from modules.Database import DataBase
 from modules.LastAction import LastAction
 from modules.UserBots import UserBots
+from modules.Proxy import Proxys
+from time import sleep
 
 
 
@@ -19,8 +21,8 @@ class Bot:
 		self.access = Access()
 		temp = asyncio.run(self.db.getWhiteList())
 		for info in temp:
-			rank = ((info["rank"] // 10) * 10) + 7
-			self.access.giveAccess(info["user_id"], rank)
+			rank = ((info.rank // 10) * 10) + 7
+			self.access.giveAccess(info.user_id, rank)
 		del temp
 		for id in admin_list:
 			if (not self.access.check(id)):
@@ -30,7 +32,9 @@ class Bot:
 			pass
 		self.access.initAll()
 		
-		self.thread = Thread(target=self.__thread_target__)
+		self.thread = Thread(target=self.__thread_bot__)
+		self.text_handler_queue = []
+		self.callback_handler_queue = []
 		self.thread.start()
 		pass
 
@@ -39,27 +43,43 @@ class Bot:
 
 
 
-	def __thread_target__(self):
-		self.loop = asyncio.new_event_loop()
-
-		@self.bot.callback_query_handler(self.__callback_handler__)
-		
-
+	def __thread_bot__(self):
+		thread = Thread(target=self.__thread_handler__)
+		thread.start()
+		def callback_handler(data):
+			self.callback_handler_queue.append(data)
+			pass
+		@self.bot.callback_query_handler(callback_handler)
 		@self.bot.message_handler()
 		def callback_func(message):
-			last_action = self.la.get(message.from_user.id)
-			if (
-				last_action 
-				and
-				self.loop.run_until_complete(self.__last_action_handler__(message, last_action["code"], last_action["arg"]))
-			):
-				return
-			self.loop.run_until_complete(self.__text_handler__(message))
+			self.text_handler_queue.append(message)
 			pass
-
-
 		self.bot.infinity_polling()
 		pass
+
+	def __thread_handler__(self):
+		loop = asyncio.new_event_loop()
+		async def __async_thread_handler__(self: Bot):
+			while True:
+				if (self.callback_handler_queue):
+					task = asyncio.create_task(self.__callback_handler_async__(self.callback_handler_queue.pop(0)))
+					await task
+				if (self.text_handler_queue):
+					task = asyncio.create_task(self.__async_text_handler__(self.text_handler_queue.pop(0)))
+					await task
+				sleep(0.1)
+				pass
+		loop.run_until_complete(__async_thread_handler__(self))
+		pass
+
+	async def __async_text_handler__(self, message): 
+		la = self.la.get(message.from_user.id)
+		if (la and 
+      		await self.__last_action_handler__(message, la["code"], la["arg"])):
+			return
+		await self.__text_handler__(message)
+			
+
 
 
 
@@ -215,114 +235,111 @@ class Bot:
 	#	Callback handler:		###
 	#							 ####
 	################				
-	def __callback_handler__(self, data):
-		async def __callback_handler_async__(data):
-			print("Callback triggered: ", data.data)
-			
-			command = data.data.split(' ')[0]
-			update_message = data.message.id
-			last_action = self.la.get(data.from_user.id)
+	async def __callback_handler_async__(self, data):
+		print("Callback triggered: ", data.data)
+		
+		command = data.data.split(' ')[0]
+		update_message = data.message.id
+		last_action = self.la.get(data.from_user.id)
 
-			match (command):
-				case "menu":
-					await self.__start_menu__(data.message.chat.id, data.message.id, self.access.checkAccessLevel(data.from_user.id, 2))
+		match (command):
+			case "menu":
+				await self.__start_menu__(data.message.chat.id, data.message.id, self.access.checkAccessLevel(data.from_user.id, 2))
 
-				case "new_bot":
-					message_id = self.send_response(data.message.chat.id, "Введите номер телефона в международном формате вместе с кодом страны.")
-					arg = {
-						"delete_messages": [message_id]
-					}
-					self.la.set(data.from_user.id, 1, arg)
+			case "new_bot":
+				message_id = self.send_response(data.message.chat.id, "Введите номер телефона в международном формате вместе с кодом страны.")
+				arg = {
+					"delete_messages": [message_id]
+				}
+				self.la.set(data.from_user.id, 1, arg)
+				pass
+
+			case "my_bots":
+				message_id = self.send_response(data.message.chat.id, "Coming soon...")
+				pass
+
+
+			#
+			#	Access actions:
+			#
+			case "access":
+				page = 0
+				if (last_action and last_action["code"] == 100):
+					page = last_action["arg"]["page"]
+				await self.__access_list_page__(data.message.chat.id, data.from_user.id, update_message, page)
+				pass
+
+			case "user":
+				if (not last_action):
+					return
+				arg = int(data.data.split(' ', 1)[1])
+				if (last_action and last_action["code"] == 100):
+					await self.__show_user__(data.message.chat.id, arg, update_message)
+				self.la.set(data.from_user.id, last_action["code"], last_action["arg"])
+				pass
+
+			case "give_access":
+				if (data.data.find(' ') != -1):
+					arg = data.data.split(' ', 1)[1]
+					result = self.bot.send_message(data.from_user.id, "<b>Для предостовления доступа, отправьте id человека, или перешлите любое сообщение от него</b>\n\n<i>/cancel для отмены.</i>", "html")
+					self.la.set(data.from_user.id, 30, {"delete_messages": [result.id], "update_message": update_message, "rights": arg})
+				else:
+					text = "<b>Выберете предоставляемые права:</b>"
+					btns = telebot.types.InlineKeyboardMarkup()
+					btns.add(
+								telebot.types.InlineKeyboardButton("Admin", None, "give_access ADMIN"),
+								telebot.types.InlineKeyboardButton("User", None, "give_access USER")
+							)
+					self.send_response(data.message.chat.id, text, btns, update_message)
 					pass
+				pass
 
-				case "my_bots":
-					message_id = self.send_response(data.message.chat.id, "Coming soon...")
-					pass
+			case "dismiss":	#	page
+				if (not last_action):
+					return
+				if (last_action["code"] != 100):
+					return
+
+				args = data.data.split(' ', 2)
+				if (len(args) >= 2):
+					user_id = int(args[1])
+				if (len(args) >= 3):
+					is_aproved = True
+				else:
+					is_aproved = False
+
+				if (is_aproved):
+					self.access.dismiss(user_id)
+					await self.db.updateUserRank(user_id)
+					await self.__access_list_page__(data.message.chat.id, data.from_user.id, update_message, last_action["arg"]["page"])
+				else:
+					await self.__show_user__(data.message.chat.id, user_id, update_message, True)
+				self.la.set(data.from_user.id, last_action["code"], last_action["arg"])
+				pass
 
 
-				#
-				#	Access actions:
-				#
-				case "access":
-					page = 0
-					if (last_action and last_action["code"] == 100):
-						page = last_action["arg"]["page"]
-					await self.__access_list_page__(data.message.chat.id, data.from_user.id, update_message, page)
-					pass
 
-				case "user":
-					if (not last_action):
-						return
-					arg = int(data.data.split(' ', 1)[1])
-					if (last_action and last_action["code"] == 100):
-						await self.__show_user__(data.message.chat.id, arg, update_message)
+			#
+			#	Page builder:
+			#
+			case "prev_page":
+				if (not last_action):
+					return
+				if (last_action["code"] == 100):
+					await last_action["arg"]["page_func"](last_action["arg"]["chat_id"], data.from_user.id, update_message, last_action["arg"]["page"] - 1)
+				else:
 					self.la.set(data.from_user.id, last_action["code"], last_action["arg"])
-					pass
+				pass
 
-				case "give_access":
-					if (data.data.find(' ') != -1):
-						arg = data.data.split(' ', 1)[1]
-						result = self.bot.send_message(data.from_user.id, "<b>Для предостовления доступа, отправьте id человека, или перешлите любое сообщение от него</b>\n\n<i>/cancel для отмены.</i>", "html")
-						self.la.set(data.from_user.id, 30, {"delete_messages": [result.id], "update_message": update_message, "rights": arg})
-					else:
-						text = "<b>Выберете предоставляемые права:</b>"
-						btns = telebot.types.InlineKeyboardMarkup()
-						btns.add(
-									telebot.types.InlineKeyboardButton("Admin", None, "give_access ADMIN"),
-									telebot.types.InlineKeyboardButton("User", None, "give_access USER")
-	       						)
-						self.send_response(data.message.chat.id, text, btns, update_message)
-						pass
-					pass
-
-				case "dismiss":	#	page
-					if (not last_action):
-						return
-					if (last_action["code"] != 100):
-						return
-
-					args = data.data.split(' ', 2)
-					if (len(args) >= 2):
-						user_id = int(args[1])
-					if (len(args) >= 3):
-						is_aproved = True
-					else:
-						is_aproved = False
-
-					if (is_aproved):
-						self.access.dismiss(user_id)
-						await self.db.updateUserRank(user_id)
-						await self.__access_list_page__(data.message.chat.id, data.from_user.id, update_message, last_action["arg"]["page"])
-					else:
-						await self.__show_user__(data.message.chat.id, user_id, update_message, True)
+			case "next_page":
+				if (not last_action):
+					return
+				if (last_action["code"] == 100):
+					await last_action["arg"]["page_func"](last_action["arg"]["chat_id"], data.from_user.id, update_message, last_action["arg"]["page"] + 1)
+				else:
 					self.la.set(data.from_user.id, last_action["code"], last_action["arg"])
-					pass
+				pass
 
-
-
-				#
-				#	Page builder:
-				#
-				case "prev_page":
-					if (not last_action):
-						return
-					if (last_action["code"] == 100):
-						await last_action["arg"]["page_func"](last_action["arg"]["chat_id"], data.from_user.id, update_message, last_action["arg"]["page"] - 1)
-					else:
-						self.la.set(data.from_user.id, last_action["code"], last_action["arg"])
-					pass
-
-				case "next_page":
-					if (not last_action):
-						return
-					if (last_action["code"] == 100):
-						await last_action["arg"]["page_func"](last_action["arg"]["chat_id"], data.from_user.id, update_message, last_action["arg"]["page"] + 1)
-					else:
-						self.la.set(data.from_user.id, last_action["code"], last_action["arg"])
-					pass
-
-			pass
-		self.loop.run_until_complete(__callback_handler_async__(data))
 		pass
 
    
@@ -362,6 +379,16 @@ class Bot:
 			case "/start":
 				await self.__start_menu__(message.chat.id, None, self.access.checkAccessLevel(message.from_user.id, 2))
 
+			case "/help":
+				self.send_response(message.chat.id, "/start\n/help\n/hard_stat")
+				pass
+
+			case "/hard_stat":
+				if (self.access.checkAccessLevel(message.from_user.id, 2)):
+					await self.__send_hard_stat__(message.chat.id)
+				else:
+					self.send_response(message.chat.id, "У вас недостаточно прав для выполнения этой команды!")
+				pass
 
 
 		return True
@@ -372,14 +399,14 @@ class Bot:
 		message_assoctiation = await self.db.getAssociationInfo(message.reply_to_message.id, message.from_user.id)
 		if (not message_assoctiation):
 			return
-		await self.uBots.sendResponse(message_assoctiation["bot_phone_id"], 
-								message_assoctiation["sender_id"], 
-								message_assoctiation["sender_msg_id"], 
+		await self.uBots.sendResponse(message_assoctiation.bot_phone_id, 
+								message_assoctiation.sender_id, 
+								message_assoctiation.sender_msg_id, 
 								message.text,
-								message_assoctiation["str_sender_id"],
-								True if message_assoctiation["status"] == 2 else False)
+								message_assoctiation.str_sender_id,
+								True if message_assoctiation.status == 2 else False)
 		#	Вызываем асинхронное обновление сообщений и выходим из фунции (обработчик)
-		self.uBots.setAction(lambda : self.uBots.updateUnreadMessages(message_assoctiation["bot_phone_id"]))
+		self.uBots.setAction(lambda : self.uBots.updateUnreadMessages(message_assoctiation.bot_phone_id, None, 60))
 		pass
 
 
@@ -447,6 +474,45 @@ class Bot:
 
 
 
+	#####################
+	#	Notify for owner:
+	#
+	async def notifyAbouBrokeBot(self, owner, broken_bot_phone_id):
+		# bot_info = await self.db.getBotInfo(broken_bot_phone_id)
+		text = ""
+		text += f"Бота {broken_bot_phone_id} невозможно запустить!\n"
+		text += f"\n"
+		text += f"Проверьте аккаунт на валидность и при необходимости добавьте аккаунт еще раз\n"
+		text += f"Аккаунт отключён.\n"
+		self.send_response(owner, text)
+		pass
+
+	async def notifyForAdminsAboutBrokenProxy(self, broken_proxy_hostnames: list):
+		text = ""
+		text += "❗️  Стоит проверить прокси сервера!\nСистема обнаружила, что через прокси ниже не удаётся подключиться к интеренету:\n<b>Адреса:</b>"
+		hostnames_in_message = 100
+		hostnames_len = len(broken_proxy_hostnames)
+		counter = 0
+		for i in range((hostnames_len // hostnames_in_message)):
+			for hostname in broken_proxy_hostnames:
+				if (hostnames_len <= 0):
+					break
+				if (counter >= hostnames_in_message):
+					for user in self.access.list():
+						if (self.access.checkAccessLevel(user.user_id, 2)):
+							self.send_response(user.user_id, text)
+							text = ""
+							counter = 0
+							pass
+				text += f"<code>{hostname}</code>"
+				counter += 1
+				hostnames_len -= 1
+				
+		pass
+
+
+
+
 	#
 	#	Access screen;
 	#
@@ -464,20 +530,20 @@ class Bot:
 				"callback_data": ""
 			}
 			
-			if (user["rank"] >= 90):
+			if (user.rank >= 90):
 				info["text"] += "🔺  "
-			elif (user["rank"] >= 80):
+			elif (user.rank >= 80):
 				info["text"] += "🔸  "
 			else:
 				info["text"] += "🔹  "
 
-			info["text"] += user["full_name"]
-			if (from_user == user["user_id"]):
+			info["text"] += user.full_name
+			if (from_user == user.user_id):
 				info["text"] += "  (You)"	
-			elif (user["username"]):
-				info["text"] += "  (@" + user["username"] + ")"
+			elif (user.username):
+				info["text"] += "  (@" + user.username + ")"
 			
-			info["callback_data"] = "user " + str(user["user_id"])
+			info["callback_data"] = "user " + str(user.user_id)
 			btns_info.append(info)
 			pass
 
@@ -498,24 +564,24 @@ class Bot:
 
 		user = await self.db.getUserInfo(id)
 
-		text += "<a href=\"tg://user?id=" + str(user["user_id"]) + "\">" + user["full_name"] + "</a>\n"
-		text += "<b>Id: </b>" + str(user["user_id"]) + "\n"
-		if (user["username"]):
-			text += "<b>Username: </b>@" + user["username"]  + "\n"
+		text += "<a href=\"tg://user?id=" + str(user.user_id) + "\">" + user.full_name + "</a>\n"
+		text += "<b>Id: </b>" + str(user.user_id) + "\n"
+		if (user.username):
+			text += "<b>Username: </b>@" + user.username  + "\n"
 		text += "<b>Права: </b>"
 
-		if (user["rank"] >= 90):
+		if (user.rank >= 90):
 			text += "🔺 Root"
-		elif (user["rank"] >= 80):
+		elif (user.rank >= 80):
 			text += "🔸 Admin"
 		else:
 			text += "🔹 User"
 
-		if (user["rank"] < 90):
+		if (user.rank < 90):
 			if (not is_dismiss):
-				btns.add(telebot.types.InlineKeyboardButton("🛑  Отобрать доступ", None, "dismiss " + str(id)))
+				btns.add(telebot.types.InlineKeyboardButton("🛑  Отобрать доступ", None, f"dismiss {id}"))
 			else:
-				btns.add(telebot.types.InlineKeyboardButton("🛑  Отобрать доступ", None, "dismiss " + str(id)), telebot.types.InlineKeyboardButton("❌  Отменить", None, "user " + str(id)))
+				btns.add(telebot.types.InlineKeyboardButton("🛑  Отобрать доступ", None, f"dismiss {id} delete"), telebot.types.InlineKeyboardButton("❌  Отменить", None, "user " + str(id)))
 		btns.add(telebot.types.InlineKeyboardButton("🔙  Назад", None, "access"))
 		
 		self.send_response(chat_id, text, btns, message_id)
@@ -524,6 +590,24 @@ class Bot:
 
 
 
+
+	###################
+	#	Statistic:
+	async def __send_hard_stat__(self, chat_id):
+		text = ""
+		text += f"Доступ к боту имеют: {self.access.count()}\n"
+		text += f"\n"
+		text += f"Общее кол-во ботов: {await self.db.getBotsCount()}\n"
+		text += f"Кол-во запущеных ботов: {len(self.uBots.loaded_sessions)}\n"
+		text += f"Одновременно может быть запущено ботов: {self.uBots.max_loaded_sessions}\n"
+		text += f"\n"
+		text += f"Общее кол-во прокси: {self.uBots.proxys.count(deactived_also=True)}\n"
+		text += f"Кол-во доступных прокси: {self.uBots.proxys.count()}\n"
+		try:
+			self.send_response(chat_id, text)
+		except:
+			pass
+		pass
 
 
 
