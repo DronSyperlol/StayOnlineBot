@@ -16,7 +16,7 @@ from time import time
 
 
 #	Consts:
-WAITING_RESPONSE_TIMEOUT = 120
+WAITING_RESPONSE_TIMEOUT = 300
 UBOT_LIFE_TIME = 120
 
 FATAL_ERROR = -1
@@ -500,9 +500,19 @@ class UserBot(multiprocessing.Process):
 		#			username 	- sender username
 		#			id 			- sender id
 		# 		},
-		#		messages: {			- dict of unread messages from this sender
-		#			message_id: message_text
-		# 		}
+		#		messages: [			- dict of unread messages from this sender
+		#			{	#	if text
+		#				type: 'TEXT',
+		#				id:	- message.id,
+		#				text: 		- message.text,
+		# 			},
+		#			{	#	if media (photo)
+		#				type: 'PHOTO',
+		#				id:	- message.id,
+		# 				file_name: 	- downloaded file,
+		# 				caption:	- file caption
+		# 			}
+		# 		]
 		# 	}
 		ret = []
 		try:
@@ -516,7 +526,7 @@ class UserBot(multiprocessing.Process):
 					continue
 				message_object = {
 					"from": {},
-					"messages": {}
+					"messages": []
 				}
 				message_object["from"]["first_name"] = dialog.chat.first_name
 				message_object["from"]["id"] = dialog.chat.id
@@ -526,7 +536,20 @@ class UserBot(multiprocessing.Process):
 					async for message in chat_history:
 						if (message.from_user.id == self.id):
 							continue
-						message_object["messages"][int(message.id)] = message.text
+						if (message.text):
+							message_object["messages"].append({
+								"type":		"TEXT",
+								"id":		message.id,
+								"text":		message.text
+							})
+						if (message.media and message.media.name == "PHOTO"):
+							await self.app.download_media(message, f"./downloads/photo_{message.from_user.id}_{message.id}.jpg")
+							message_object["messages"].append({
+								"type":			"PHOTO",
+								"id":			message.id,
+								"file_name":	f"./downloads/photo_{message.from_user.id}_{message.id}.jpg",
+								"caption": 		message.caption
+							})
 						pass
 					pass
 				except:

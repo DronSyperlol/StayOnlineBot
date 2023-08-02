@@ -436,19 +436,10 @@ class Bot:
 	#
 	async def processNewMessages(self, sender_object, bot_phone_id, bot_user_id, owner):
 		await self.db.newSender(sender_object["from"]["id"], sender_object["from"]["username"])
-		messages = []
-		for msg_id, msg_text in sender_object["messages"].items():
-			msg_id = int(msg_id)
-			messages.append({
-				"id": msg_id,
-				"text": msg_text
-			})
-			pass
-		messages.reverse()
-		asyncio.create_task(self.__notifyAboutMessages__(sender_object, messages, bot_phone_id, bot_user_id, owner))
+		asyncio.create_task(self.__notifyAboutMessages__(sender_object, bot_phone_id, bot_user_id, owner))
 		pass
 
-	async def __notifyAboutMessages__(self, sender_object, messages_list, bot_phone_id, bot_user_id, owner):	# private (типа)
+	async def __notifyAboutMessages__(self, sender_object, bot_phone_id, bot_user_id, owner):	# private (типа)
 		text = (
 			"<b>✉️  Получены новые сообщения от пользователя:</b> " +
 			f"<a href=\"tg://user?id={sender_object['from']['id']}\">{sender_object['from']['first_name']}</a>" +
@@ -458,16 +449,17 @@ class Bot:
 			"<b>Сообщения предоставлены ниже: ⬇️</b>"
 		)
 		self.bot.send_message(owner, text, "html", disable_web_page_preview=True)
-		for message in messages_list:
-			result = self.bot.send_message(
-				owner, 
-				f"<a href=\"tg://user?id={sender_object['from']['id']}\">{sender_object['from']['first_name']}:</a>\n" +
-				message["text"],
-				"html",
-				disable_web_page_preview=True				
-			)
+		sender_object["messages"].reverse()
+		for msg in sender_object["messages"]:
+			if (msg["type"] == "TEXT"):
+				result = self.bot.send_message(owner, 
+												f"<a href=\"tg://user?id={sender_object['from']['id']}\">{sender_object['from']['first_name']}:</a>\n"
+												+ msg["text"], "html",
+												disable_web_page_preview=True)
+			elif (msg["type"] == "PHOTO"):
+				result = self.bot.send_photo(owner, telebot.types.InputFile(msg["file_name"]), msg["caption"])
 			await self.db.updateAssociationStatus(bot_phone_id, sender_object['from']['id'], 2)
-			await self.db.newAssociation(bot_phone_id, sender_object['from']['id'], message["id"], result.id, 1)
+			await self.db.newAssociation(bot_phone_id, sender_object['from']['id'], msg["id"], result.id, 1)
 			pass
 		pass
 
