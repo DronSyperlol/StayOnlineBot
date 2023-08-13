@@ -1,6 +1,7 @@
 .vscode
 
 data/config.cfg
+data/proxy.json
 modules/__pycache__
 sessions
 

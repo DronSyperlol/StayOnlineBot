@@ -199,6 +199,10 @@ class UserBot(multiprocessing.Process):
 		return await self.call_func("__get_unread_messages_info__")
 
 
+	async def readMessages(self):
+		return await self.call_func("__read_messages__")
+	
+	
 	async def sendMessage(self, chat_id, text, str_chat_id, reply_to_message_id = None):
 		return await self.call_func("__send_message__", [chat_id, text, str_chat_id, reply_to_message_id])
 
@@ -373,6 +377,9 @@ class UserBot(multiprocessing.Process):
 					response["response"] = await self.__get_unread_messages_info__()
 					pass
 				
+				case "__read_messages__":
+					response["response"] = await self.__read_messages__()
+
 				case "__send_message__":
 					response["response"] = await self.__send_message__(call["args"][0], call["args"][1], call["args"][2], call["args"][3])
 					response["response"] = str(response["response"])
@@ -560,6 +567,22 @@ class UserBot(multiprocessing.Process):
 		except:
 			pass
 		return ret
+	
+
+	async def __read_messages__(self):
+		try:
+			result = self.app.get_dialogs()
+		except:
+			return False
+
+		try:
+			async for dialog in result:
+				if (dialog.unread_messages_count <= 0):
+					continue
+				await self.app.read_chat_history(dialog.chat.id)
+		except:
+			pass
+		return True
 	
 
 	async def __send_message__(self, chat_id, text, str_chat_id = "", reply_to_message_id = None):

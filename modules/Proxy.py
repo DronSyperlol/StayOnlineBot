@@ -61,12 +61,15 @@ class Proxys:
 	def getUnpopular(self, deactive_also = False):
 		if len(self.servers) <= 0:
 			return None
-		selected_server = self.servers[self.iterPos()]
+		for index, server in enumerate(self.servers):
+			if (server.is_active):
+				selected_server = server
+				self.iterSetPos(index)
+				break
 		for index, server in enumerate(self.servers):
 			if ((server.is_active or deactive_also) and server.given_away < selected_server.given_away):
 				selected_server = server
 				self.iterSetPos(index)
-
 		self.servers[self.iterPos()].given_away += 1
 		return self.servers[self.iterPos()].proxy_info
 		
@@ -225,7 +228,47 @@ class Proxys:
 		pass
 
 
-	
+	def parseText(self, text, limit = 10000, change_on = None):
+		data = text.split('\n')
+		loaded_servers = 0
+		for row in data:
+			row = row.replace("\n", "")
+			row = row.replace("\t", "")
+
+			if (len(row) < 1):
+				continue
+
+			comment_index = row.find("#")
+			if (comment_index > 0):
+				row = row[:comment_index]
+			elif (comment_index == 0):
+				continue
+
+			row = row.replace(' ', ':')
+			splited_row = row.split(':')
+			
+			if (len(splited_row) < 3):
+				continue
+				
+			if (limit <= loaded_servers):
+				break
+
+			loaded_servers += 1
+			if (change_on):
+				self.rm(change_on)
+				
+			if (len(splited_row) == 4):
+				self.add(splited_row[0], splited_row[1], splited_row[2], splited_row[3])
+				continue
+
+			if (len(splited_row) == 5):
+				self.add(splited_row[0], splited_row[1], splited_row[2], splited_row[3], splited_row[4])
+				continue
+
+			self.add(splited_row[0], splited_row[1], splited_row[2])
+			pass	
+		return loaded_servers
+
 	
 
 	pass

@@ -48,11 +48,13 @@ class DataBase:
 	async def getUserInfo(self, user_id) -> UserInfo:
 		db_query = "SELECT * FROM `users` WHERE `user_id` = ?"
 		result = await self.pool.execute(db_query, [user_id])
+		if (len(result) == 0):
+			return None
 		return UserInfo(result[0][0], result[0][1], result[0][2], result[0][3])
 		pass
 
 
-	async def getWhiteList(self) -> list | UserInfo:
+	async def getWhiteList(self) -> list[UserInfo]:
 		db_query = "SELECT * FROM `users` WHERE `rank` > 0"
 		result = await self.pool.execute(db_query)
 		ret = []
@@ -74,12 +76,22 @@ class DataBase:
 		await self.pool.execute(db_query, [next_login, bot_phone_id])
 		pass
 
-	async def getBotInfo(self, bot_phone_id) -> BotInfo:
+	async def getBotsInfoByOwner(self, owner) -> list[BotInfo]:
+		db_query = "SELECT `bot_phone_id`, `owner`, `proxy_hostname`, `next_login` FROM `bots` WHERE `owner` = ?"
+		result = await self.pool.execute(db_query, [owner])
+		ret = []
+		for row in result: 
+			ret.append(BotInfo(row[0], row[1], row[2], row[3]))
+		return ret
+	
+	async def getBotInfo(self, bot_phone_id) -> BotInfo | None:
 		db_query = "SELECT `bot_phone_id`, `owner`, `proxy_hostname`, `next_login` FROM `bots` WHERE `bot_phone_id` = ?"
 		result = await self.pool.execute(db_query, [bot_phone_id])
+		if (len(result) == 0):
+			return None
 		return BotInfo(result[0][0], result[0][1], result[0][2], result[0][3])
 
-	async def getNearestNextLoginBots(self) -> list | BotInfo:
+	async def getNearestNextLoginBots(self) -> list[BotInfo]:
 		db_query = "SELECT `bot_phone_id`, `owner`, `proxy_hostname`, `next_login` FROM `bots` WHERE `next_login` < UNIX_TIMESTAMP()"
 		result = await self.pool.execute(db_query)
 		ret = []
@@ -94,8 +106,8 @@ class DataBase:
 		return result[0][0]
 	
 	
-	async def getProxyStat(self) -> list | ProxyStat:
-		db_query = "SELECT `proxy_hostname`, COUNT(user_id) FROM `sessions` WHERE `status` != -1 AND `proxy_hostname` IS NOT NULL GROUP BY `proxy_hostname`"
+	async def getProxyStat(self) -> list[ProxyStat]:
+		db_query = "SELECT `proxy_hostname`, COUNT(bot_phone_id) FROM `bots` WHERE `proxy_hostname` IS NOT NULL GROUP BY `proxy_hostname`"
 		result = await self.pool.execute(db_query)
 		ret = []
 		for row in result:
@@ -128,7 +140,7 @@ class DataBase:
 	async def getAssociationInfo(self, bot_msg_id, bot_owner) -> AssociationInfo:
 		db_query = "SELECT ma.bot_phone_id, ma.sender_id, s.username as str_sender_id, ma.sender_msg_id, ma.status FROM `message_association` AS ma INNER JOIN `bots` AS b ON ma.bot_phone_id = b.bot_phone_id INNER JOIN `senders` AS s ON ma.sender_id = s.id WHERE b.owner = ? AND ma.bot_msg_id = ?"
 		result = await self.pool.execute(db_query, [bot_owner, bot_msg_id])
-		if (not result):
+		if (len(result) == 0):
 			return None
 		return AssociationInfo(result[0][0], result[0][1], result[0][2], result[0][3], result[0][4])
 	

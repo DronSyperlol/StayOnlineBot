@@ -28,9 +28,13 @@ class UserBots:
 		self.upper_threshold = upper_threshold
 		self.max_loaded_sessions = max_loaded_sessions
 		self.sessions = self.getLocalSessions()
+		self.safeLoadBotsBuffer = []
 		self.processNewMessages = None 
 		self.notifyAboutBrokenBot = None 
+		self.nextNotify = 0
 		self.action_queue = []
+		asyncio.get_event_loop().run_until_complete(self.updateProxysPopularity())
+		pass
 
 	#	Configure object
 	def initCallbacks(self, processNewMessages, notifyAboutBrokenBot, notifyForAdminsAboutBrokenProxy):
@@ -51,6 +55,7 @@ class UserBots:
 				action()
 			)
 		pass
+
 
 	def canLoadCount(self):
 		return self.max_loaded_sessions - len(self.loaded_sessions)
@@ -80,7 +85,7 @@ class UserBots:
 		bot_phone_id = int(phone.replace('+', ''))
 		session_name = f"tmp_{bot_phone_id}"
 		proxy = None
-		if (self.proxys.is_empty()):
+		if (not self.proxys.is_empty()):
 			proxy = self.proxys.getUnpopular()
 		bot = UserBot(self.session_directory, session_name, proxy, self.api_id, self.api_hash)
 		self.loaded_sessions[bot_phone_id] = bot
@@ -102,9 +107,9 @@ class UserBots:
 
 	# initialize
 	async def initUBot(self, bot_phone_id, owner):
-		final_name = f"{bot_phone_id}.session"
-		tmp_name = f"tmp_{bot_phone_id}.session"
 		bot = self.getBot(bot_phone_id)
+		final_name = f"{bot.phone}.session"
+		tmp_name = f"tmp_{bot_phone_id}.session"
 		self.killUBot(bot_phone_id)
 		for _ in range(3):
 			try:
@@ -117,10 +122,10 @@ class UserBots:
 			except:
 				await asyncio.sleep(1)
 				pass
-		await self.db.newBot(	bot_phone_id, 
-								owner, 
+		await self.db.newBot(	int(bot.phone), owner, 
 								None if (not bot.proxy) else bot.proxy["hostname"], 
 								self.generateNexLoginTime())
+		await self.updateProxysPopularity()
 		pass
 
 
@@ -137,23 +142,36 @@ class UserBots:
 	
 	##################
 	#	Возвращает запущеного бота, если тот был запущен
-	async def getOrStartUBot(self, bot_phone_id, proxy = None, start_anyway = False):
+	async def getOrStartUBot(self, bot_phone_id, bot_info: BotInfo = None, start_anyway = False, process_broken_bots = False):
+		if (bot_phone_id in self.loaded_sessions):
+			return self.loaded_sessions[bot_phone_id]
 		if (not start_anyway and self.canLoadCount() <= 0):
 			raise StartedMaxBots()
-		if (bot_phone_id in self.loaded_sessions and self.loaded_sessions[bot_phone_id].is_active):
-			return self.loaded_sessions[bot_phone_id]
-		return await self.startUBot(bot_phone_id, (await self.db.getBotOwner(bot_phone_id)), proxy)
+		if (bot_info == None):
+			bot_info = await self.db.getBotInfo(bot_phone_id)
+			if (bot_info == None):
+				return None
+		bot = await self.startUBot(bot_phone_id, bot_info.owner, self.proxys.getByHostname(bot_info.proxy_hostname))
+		if (process_broken_bots):
+			if (not bot.is_active):
+				await self.processBrokenBot(bot_info.owner, bot_phone_id)
+				return None
+		return bot
 	
 
 	#	Запускает пул ботов
-	async def safeLoadBotsPool(self, bots_info: list | BotInfo):
+	async def safeLoadBotsPool(self, bots_info: list[BotInfo]):
 		loaded_sessions = []
 		tasks = []
-		for bot_info in bots_info:
-			tasks.append({
-				"bot_phone_id" : bot_info.bot_phone_id,
-				"task" : asyncio.create_task(self.getOrStartUBot(bot_info.bot_phone_id, self.proxys.getByHostname(bot_info.proxy_hostname)))
-			})
+		for bot_info in bots_info.copy():
+			if (bot_info.bot_phone_id in self.safeLoadBotsBuffer):
+				bots_info.remove(bot_info)
+			else:
+				self.safeLoadBotsBuffer.append(bot_info.bot_phone_id)
+				tasks.append({
+					"bot_phone_id" : bot_info.bot_phone_id,
+					"task" : asyncio.create_task(self.getOrStartUBot(bot_info.bot_phone_id, bot_info))
+				})
 			pass
 		for task in tasks:
 			try:
@@ -164,6 +182,9 @@ class UserBots:
 			except Exception as e:
 				print(f"Unknown exception in \"safeLoadBotsPool\"\nDetails: {e}")
 				pass
+		for bot_info in bots_info:
+			self.safeLoadBotsBuffer.remove(bot_info.bot_phone_id)
+			pass
 		return loaded_sessions
 
 
@@ -224,19 +245,33 @@ class UserBots:
 
 	async def updateUnreadMessages(self, bot_phone_id, bot: UserBot = None, update_after = 0):
 		if (not bot):
-			bot = await self.getOrStartUBot(bot_phone_id)
+			bot = await self.getOrStartUBot(bot_phone_id, start_anyway=True, process_broken_bots=True)
+			if (bot == None):
+				return False
 		bot.deadAfter(update_after + 60)
 		await asyncio.sleep(update_after)
 		result = await bot.getUnreadMessagesInfo()
 		for sender_object in result:
-			await self.processNewMessages(sender_object, int(bot.phone), bot.id, bot.owner)
+			await self.processNewMessages(sender_object, bot_phone_id, bot.id, bot.owner)
 			return True
 		return False
+	
+	async def readUnreadMessages(self, bot_phone_id, bot: UserBot = None, update_after = 0):
+		if (not bot):
+			bot = await self.getOrStartUBot(bot_phone_id, start_anyway=True, process_broken_bots=True)
+			if (bot == None):
+				return False
+		bot.deadAfter(update_after + 60)
+		await asyncio.sleep(update_after)
+		result = await bot.readMessages()
+		return result
 
 	async def updateOnlineStatus(self, bot_phone_id, bot: UserBot = None, update_after = 0):
 		if (not bot):
-			bot = await self.getOrStartUBot(bot_phone_id)
-		bot.deadAfter(120)
+			bot = await self.getOrStartUBot(bot_phone_id, start_anyway=True, process_broken_bots=True)
+			if (bot == None):
+				return False
+		bot.deadAfter(update_after + 60)
 		await asyncio.sleep(update_after)
 		if (await bot.updateOnlineStatus(True)):
 			return True
@@ -300,13 +335,11 @@ class UserBots:
 
 
 	async def checkProxys(self, 
-		    proxys_for_check = None, 
-			disable_second_check = False, 
-			notify_if_broken = False):
-		# self.logger.log("Check proxys rinning...")
+		  proxys_for_check: list = None, 
+		  disable_second_check = False, 
+		  notify_if_broken = False):
 		checking_url_list = [
 			"https://time100.ru/api",
-			"https://google.com",
 			"https://postman-echo.com/get?text=helloworld"
 		]
 		second_check = []
@@ -329,36 +362,35 @@ class UserBots:
 			
 			for task in tasks:
 				try:
-					# time_start = time()
-					async with asyncio.timeout(10):
+					time_start = time()
+					async with asyncio.timeout(50):
 						response = await task[0]
 					if (response.status == 200):
 						proxy_status = True
-					# self.logger.log(f"Check proxys. From {task[1]} GET to {response.url}, ms: {int((time() - time_start) * 1000)}, code: {response.status}")
+					print(f"Check proxys. From {task[1]} GET to {response.url}, ms: {int((time() - time_start) * 1000)}, code: {response.status}")
 				except:
 					pass
 				pass
-			if (server.is_active and not proxy_status):
+			if (not proxy_status):
 				second_check.append(server)
 			if (proxy_status != server.is_active):
 				self.proxys.setActivity(server.proxy_info["hostname"], proxy_status)
 			pass
 		del proxys_for_check
 		del checking_url_list
-		if (notify_if_broken):
+		if (notify_if_broken and time() > self.nextNotify):
+			self.nextNotify = time() + 3600 * 5
 			broken_hostnames_list = [server.proxy_info["hostname"] for server in second_check]
 			broken_proxy_txt_list = ""
 			for hostname in broken_hostnames_list:
 				broken_proxy_txt_list += f"{hostname}\n"
 			print(f"Notify about broken proxys. Hostnames:\n{broken_proxy_txt_list}")
-			self.notifyForAdminsAboutBrokenProxy(broken_hostnames_list)
+			await self.notifyForAdminsAboutBrokenProxy(broken_hostnames_list)
 		if (second_check and not disable_second_check):
-			# self.logger.log(f"Check proxys. Detected broken proxys: {second_check}. Waiting before new check")
-			await asyncio.sleep(300)
+			await asyncio.sleep(120)
 			await self.checkProxys(second_check, True, True)
 			pass
 		pass
-		# self.logger.log("Check proxys ended")
 
 
 	async def getQuery(self, url, proxy_url):

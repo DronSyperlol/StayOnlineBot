@@ -99,10 +99,10 @@ class Access:
 
 
 	#	Giving info:
-	def list(self) -> list | User:
+	def list(self) -> list[User]:
 		ret = []
 		for user in self.white_list:
-			ret.append({user.user_id : user.rank})
+			ret.append(user)
 			pass
 		return ret
 
