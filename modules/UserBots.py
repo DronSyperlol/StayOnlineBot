@@ -198,9 +198,9 @@ class UserBots:
 		return False
 	
 	async def killOldUBots(self):	#	checker
-		for key, bot in self.loaded_sessions.items():
-			if (bot.dead_time < time()):
-				self.killUBot(int(key))
+		for key in self.loaded_sessions:
+			if (self.loaded_sessions[key].dead_time < time()):
+				self.killUBot(key)
 				pass
 			pass
 		pass
