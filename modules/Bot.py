@@ -607,7 +607,7 @@ class Bot:
 						counter = 0
 						pass
 				pass
-			text += f"<code>{hostname}</code>"
+			text += f"<code>{hostname}</code>\n"
 			counter += 1
 			pass
 		for user in self.access.list():
