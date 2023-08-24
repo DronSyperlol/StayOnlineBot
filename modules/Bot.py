@@ -249,6 +249,7 @@ class Bot:
 				for proxy_hostname in proxy_list:
 					self.uBots.proxys.rm(proxy_hostname.replace(" ", ""))
 
+				self.uBots.proxys.save()
 				self.deleteMessages(message.chat.id, arg["delete_messages"])
 				arg["delete_messages"] = []
 				self.bot.send_message(message.chat.id, f"✅  <b>Указаные прокси серверы были удалены!</b>\n\n/start", "html")
