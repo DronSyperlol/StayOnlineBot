@@ -55,6 +55,14 @@ def main():
 			pass
 		pass
 
+	async def DB_checker(uBots: UserBots, bot: Bot, timeout):
+		while True:
+			await uBots.db.pool.checkConnections()
+			await bot.db.pool.checkConnections()
+			await asyncio.sleep(timeout)
+			pass
+		pass
+
 
 	#	Consts:
 	CONFIG_FILE = "./data/config.cfg"
@@ -114,15 +122,17 @@ def main():
 
 
 	async def async_main(config):
-		updater_task = asyncio.create_task(status_updater(uBots, int(config["upool"]["UPDATER_ONLINE_TIMEOUT"])))
-		bot_killer_task = asyncio.create_task(bot_life_checker(uBots, int(config["upool"]["KILL_OLD_BOTS_TIMEOUT"])))
-		check_action_task = asyncio.create_task(thread_action_checker(uBots, int(config["upool"]["CHECK_ACTION_TIMEOUT"])))
-		proxys_checker_task = asyncio.create_task(proxys_checker(uBots, int(config["upool"]["CHECK_PROXYS_TIMEOUT"])))
+		updater_task = asyncio.create_task(status_updater(uBots, int(config["upool"]["UPDATER_ONLINE_INTERVAL"])))
+		bot_killer_task = asyncio.create_task(bot_life_checker(uBots, int(config["upool"]["KILL_OLD_BOTS_INTERVAL"])))
+		check_action_task = asyncio.create_task(thread_action_checker(uBots, int(config["upool"]["CHECK_ACTION_INTERVAL"])))
+		proxys_checker_task = asyncio.create_task(proxys_checker(uBots, int(config["upool"]["CHECK_PROXYS_INTERVAL"])))
+		DB_checker_task = asyncio.create_task(DB_checker(uBots, bot, int(config["upool"]["CHECK_DB_INTERVAL"])))
 
 		await updater_task
 		await bot_killer_task
 		await check_action_task
 		await proxys_checker_task
+		await DB_checker_task
 		pass
 
 	asyncio.run(async_main(config))
