@@ -123,7 +123,7 @@ class DataBase:
 		db_query = "DELETE FROM `bots` WHERE `bot_phone_id` = ?"
 		await self.pool.execute(db_query, [bot_phone_id])
 		pass
-	
+
 
 
 	# message_association:

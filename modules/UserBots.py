@@ -228,12 +228,13 @@ class UserBots:
 
 
 	async def proccessNextLogin(self, bot: UserBot, bot_phone_id):		# TODO... Надо сократить это говно!!!
-		update_messages_task = asyncio.create_task(self.updateUnreadMessages(None, bot))
-		do_online_task = asyncio.create_task(self.updateOnlineStatus(None, bot))
-		await update_messages_task
+		do_online_task = asyncio.create_task(self.updateOnlineStatus(bot_phone_id, bot))
+		update_messages_task = asyncio.create_task(self.updateUnreadMessages(bot_phone_id, bot))
 		await do_online_task
+		await update_messages_task
 		await self.db.updateNextLogin(bot_phone_id, self.generateNexLoginTime())
 		self.killUBot(bot_phone_id)
+		pass
 
 
 	def generateNexLoginTime(self):

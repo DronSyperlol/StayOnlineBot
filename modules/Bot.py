@@ -562,8 +562,7 @@ class Bot:
 			f"{' (@' + sender_object['from']['username'] + ')' if sender_object['from']['username'] else ''}\n\n"
 			f"🤖  Получены ботом: <a href=\"tg://user?id={bot_user_id}\">{bot_phone_id}</a>\n\n" +
 			"<i>Для ответа на сообщение, ответьте (сдвиньте влево) на интересующее сообщение:</i>\n\n" +
-			"<b>Сообщения предоставлены ниже: ⬇️</b>"
-		)
+			"<b>Сообщения предоставлены ниже: ⬇️</b>")
 		self.bot.send_message(owner, text, "html", disable_web_page_preview=True)
 		sender_object["messages"].reverse()
 		for msg in sender_object["messages"]:
