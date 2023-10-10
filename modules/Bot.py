@@ -49,6 +49,10 @@ class Bot:
 
 
 	def __thread_bot__(self):
+		#	init:
+		self.bot.set_my_commands([telebot.types.BotCommand("/start", "Меню бота"),
+								  telebot.types.BotCommand("/hard_stat", "Статистика бота"),
+								  telebot.types.BotCommand("/help", "Показать список команд")])
 		thread = Thread(target=self.__thread_handler__)
 		thread.start()
 		def callback_handler(data):
@@ -82,9 +86,7 @@ class Bot:
 		if (la and 
       		await self.__last_action_handler__(message, la["code"], la["arg"])):
 			return
-		await self.__text_handler__(message)
-			
-
+		await self.__text_handler__(message)	
 
 
 

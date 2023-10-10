@@ -137,7 +137,7 @@ class UserBots:
 			raise Exception("Bot already started")
 		self.loaded_sessions[bot_phone_id] = bot
 		bot.start()
-		await bot.logIn()
+		not await bot.logIn()
 		return bot
 	
 
@@ -219,16 +219,16 @@ class UserBots:
 		tasks = []
 		for bot in loaded_bots:
 			if (not bot.is_active):
-				tasks.append(self.processBrokenBot(bot.owner, int(bot.name)))
-				continue
-			tasks.append(asyncio.create_task(self.proccessNextLogin(bot, int(bot.phone))))
+				tasks.append(asyncio.create_task(self.processBrokenBot(bot.owner, int(bot.name))))
+			else:
+				tasks.append(asyncio.create_task(self.proccessNextLogin(bot, int(bot.phone))))
 			pass
 		for task in tasks:
 			await task
 			pass
 
 
-	async def proccessNextLogin(self, bot: UserBot, bot_phone_id):		# TODO... Надо сократить это говно!!!
+	async def proccessNextLogin(self, bot: UserBot, bot_phone_id):
 		do_online_task = asyncio.create_task(self.updateOnlineStatus(bot_phone_id, bot))
 		update_messages_task = asyncio.create_task(self.updateUnreadMessages(bot_phone_id, bot))
 		await do_online_task
