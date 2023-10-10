@@ -17,6 +17,7 @@ from time import time
 
 #	Consts:
 WAITING_RESPONSE_TIMEOUT = 300
+WAITING_CONNECT_TIMEOUT = 120
 UBOT_LIFE_TIME = 120
 
 FATAL_ERROR = -1
@@ -229,7 +230,7 @@ class UserBot(multiprocessing.Process):
 		self.q_call.put(json.dumps(call))
 		response = await self.wait_response(call["id"])
 		if (response == None):
-			raise Exception(f"response is a null\nTS: {time()}\nCall obj: {str(call)}")
+			raise Exception(f"response is a null\nTS: {time()}\nCall obj: {str(call)}\nBot: {self.name} {'Flag: is_active' if self.is_active else ''}")
 		if ("self" in response):
 			self.is_active = response["self"]["is_active"]
 			self.phone = response["self"]["phone"]
@@ -461,7 +462,7 @@ class UserBot(multiprocessing.Process):
 	# login exists session
 	async def __logIn__(self):
 		try:
-			async with asyncio.timeout(300):
+			async with asyncio.timeout(WAITING_CONNECT_TIMEOUT):
 				await self.app.connect()
 			user_info = await self.app.get_me()
 		except:
