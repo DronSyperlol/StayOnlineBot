@@ -461,7 +461,8 @@ class UserBot(multiprocessing.Process):
 	# login exists session
 	async def __logIn__(self):
 		try:
-			await self.app.connect()
+			async with asyncio.timeout(300):
+				await self.app.connect()
 			user_info = await self.app.get_me()
 		except:
 			return False
