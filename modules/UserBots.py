@@ -140,7 +140,7 @@ class UserBots:
 		await bot.logIn()
 		return bot
 	
-	
+
 	##################
 	#	Возвращает запущеного бота, если тот был запущен
 	async def getOrStartUBot(self, bot_phone_id, bot_info: BotInfo = None, start_anyway = False, process_broken_bots = False):
@@ -317,6 +317,8 @@ class UserBots:
 				return False
 		else:
 			print(f"Method \"sendResponse\" can't start bot {bot_phone_id}. Free spaces: {self.canLoadCount()}")
+			return False
+		if (bot == None):
 			return False
 		await bot.sendMessage(sender_id, text, str_sender_id, sender_msg_id)
 		return True
